@@ -14,12 +14,52 @@ export type Database = {
   }
   public: {
     Tables: {
+      checklist_items: {
+        Row: {
+          created_at: string
+          estado: Database["public"]["Enums"]["checklist_estado"]
+          id: string
+          item: string
+          observacion: string | null
+          seccion: string
+          solicitud_id: string
+        }
+        Insert: {
+          created_at?: string
+          estado?: Database["public"]["Enums"]["checklist_estado"]
+          id?: string
+          item: string
+          observacion?: string | null
+          seccion: string
+          solicitud_id: string
+        }
+        Update: {
+          created_at?: string
+          estado?: Database["public"]["Enums"]["checklist_estado"]
+          id?: string
+          item?: string
+          observacion?: string | null
+          seccion?: string
+          solicitud_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_items_solicitud_id_fkey"
+            columns: ["solicitud_id"]
+            isOneToOne: false
+            referencedRelation: "solicitudes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fichas: {
         Row: {
           activa: boolean
           created_at: string
           descripcion_generada: string | null
           id: string
+          incluye_transporte_final: boolean
+          precio_final: number | null
           slug: string | null
           solicitud_id: string
         }
@@ -28,6 +68,8 @@ export type Database = {
           created_at?: string
           descripcion_generada?: string | null
           id?: string
+          incluye_transporte_final?: boolean
+          precio_final?: number | null
           slug?: string | null
           solicitud_id: string
         }
@@ -36,6 +78,8 @@ export type Database = {
           created_at?: string
           descripcion_generada?: string | null
           id?: string
+          incluye_transporte_final?: boolean
+          precio_final?: number | null
           slug?: string | null
           solicitud_id?: string
         }
@@ -83,25 +127,34 @@ export type Database = {
       }
       informes: {
         Row: {
+          borrador: boolean
           created_at: string
           id: string
           observaciones: string | null
+          observaciones_generales: string | null
+          puntos_positivos: string | null
           solicitud_id: string
           taller_id: string
           url_pdf: string | null
         }
         Insert: {
+          borrador?: boolean
           created_at?: string
           id?: string
           observaciones?: string | null
+          observaciones_generales?: string | null
+          puntos_positivos?: string | null
           solicitud_id: string
           taller_id: string
           url_pdf?: string | null
         }
         Update: {
+          borrador?: boolean
           created_at?: string
           id?: string
           observaciones?: string | null
+          observaciones_generales?: string | null
+          puntos_positivos?: string | null
           solicitud_id?: string
           taller_id?: string
           url_pdf?: string | null
@@ -293,6 +346,7 @@ export type Database = {
     }
     Enums: {
       app_role: "vendedor" | "taller" | "admin"
+      checklist_estado: "correcto" | "con_observaciones" | "no_aplica"
       foto_tipo: "original" | "procesada"
       solicitud_status:
         | "pendiente"
@@ -429,6 +483,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["vendedor", "taller", "admin"],
+      checklist_estado: ["correcto", "con_observaciones", "no_aplica"],
       foto_tipo: ["original", "procesada"],
       solicitud_status: [
         "pendiente",

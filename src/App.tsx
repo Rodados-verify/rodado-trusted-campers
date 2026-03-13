@@ -16,7 +16,20 @@ import VendedorCuentaPage from "./pages/VendedorCuentaPage";
 import TallerDashboard from "./pages/TallerDashboard";
 import TallerPendiente from "./pages/TallerPendiente";
 import AdminDashboard from "./pages/AdminDashboard";
+import VehiculoPublico from "./pages/VehiculoPublico";
 import NotFound from "./pages/NotFound";
+
+// Admin pages
+import AdminLayout from "@/components/admin/AdminLayout";
+import AdminSolicitudDetalle from "./pages/admin/AdminSolicitudDetalle";
+import AdminTalleres from "./pages/admin/AdminTalleres";
+import AdminUsuarios from "./pages/admin/AdminUsuarios";
+import AdminCuenta from "./pages/admin/AdminCuenta";
+
+// Taller pages
+import TallerLayout from "@/components/taller/TallerLayout";
+import TallerEncargoDetalle from "./pages/taller/TallerEncargoDetalle";
+import TallerPerfil from "./pages/taller/TallerPerfil";
 
 const queryClient = new QueryClient();
 
@@ -34,46 +47,25 @@ const App = () => (
             <Route path="/registro/taller" element={<RegistroTaller />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/taller/pendiente" element={<TallerPendiente />} />
-            <Route
-              path="/vendedor"
-              element={
-                <ProtectedRoute allowedRoles={["vendedor"]}>
-                  <VendedorDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/vendedor/ficha"
-              element={
-                <ProtectedRoute allowedRoles={["vendedor"]}>
-                  <VendedorFichaPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/vendedor/cuenta"
-              element={
-                <ProtectedRoute allowedRoles={["vendedor"]}>
-                  <VendedorCuentaPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/taller"
-              element={
-                <ProtectedRoute allowedRoles={["taller"]}>
-                  <TallerDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute allowedRoles={["admin"]}>
-                  <AdminDashboard />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/vehiculo/:slug" element={<VehiculoPublico />} />
+
+            {/* Vendedor */}
+            <Route path="/vendedor" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorDashboard /></ProtectedRoute>} />
+            <Route path="/vendedor/ficha" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorFichaPage /></ProtectedRoute>} />
+            <Route path="/vendedor/cuenta" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorCuentaPage /></ProtectedRoute>} />
+
+            {/* Taller */}
+            <Route path="/taller" element={<ProtectedRoute allowedRoles={["taller"]}><TallerDashboard /></ProtectedRoute>} />
+            <Route path="/taller/encargo/:id" element={<ProtectedRoute allowedRoles={["taller"]}><TallerLayout><TallerEncargoDetalle /></TallerLayout></ProtectedRoute>} />
+            <Route path="/taller/perfil" element={<ProtectedRoute allowedRoles={["taller"]}><TallerLayout><TallerPerfil /></TallerLayout></ProtectedRoute>} />
+
+            {/* Admin */}
+            <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><AdminDashboard /></ProtectedRoute>} />
+            <Route path="/admin/solicitud/:id" element={<ProtectedRoute allowedRoles={["admin"]}><AdminLayout><AdminSolicitudDetalle /></AdminLayout></ProtectedRoute>} />
+            <Route path="/admin/talleres" element={<ProtectedRoute allowedRoles={["admin"]}><AdminLayout><AdminTalleres /></AdminLayout></ProtectedRoute>} />
+            <Route path="/admin/usuarios" element={<ProtectedRoute allowedRoles={["admin"]}><AdminLayout><AdminUsuarios /></AdminLayout></ProtectedRoute>} />
+            <Route path="/admin/cuenta" element={<ProtectedRoute allowedRoles={["admin"]}><AdminLayout><AdminCuenta /></AdminLayout></ProtectedRoute>} />
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
