@@ -14,16 +14,293 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      fichas: {
+        Row: {
+          activa: boolean
+          created_at: string
+          descripcion_generada: string | null
+          id: string
+          slug: string | null
+          solicitud_id: string
+        }
+        Insert: {
+          activa?: boolean
+          created_at?: string
+          descripcion_generada?: string | null
+          id?: string
+          slug?: string | null
+          solicitud_id: string
+        }
+        Update: {
+          activa?: boolean
+          created_at?: string
+          descripcion_generada?: string | null
+          id?: string
+          slug?: string | null
+          solicitud_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fichas_solicitud_id_fkey"
+            columns: ["solicitud_id"]
+            isOneToOne: false
+            referencedRelation: "solicitudes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fotos_solicitud: {
+        Row: {
+          created_at: string
+          id: string
+          solicitud_id: string
+          tipo: Database["public"]["Enums"]["foto_tipo"]
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          solicitud_id: string
+          tipo?: Database["public"]["Enums"]["foto_tipo"]
+          url: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          solicitud_id?: string
+          tipo?: Database["public"]["Enums"]["foto_tipo"]
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fotos_solicitud_solicitud_id_fkey"
+            columns: ["solicitud_id"]
+            isOneToOne: false
+            referencedRelation: "solicitudes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      informes: {
+        Row: {
+          created_at: string
+          id: string
+          observaciones: string | null
+          solicitud_id: string
+          taller_id: string
+          url_pdf: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          observaciones?: string | null
+          solicitud_id: string
+          taller_id: string
+          url_pdf?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          observaciones?: string | null
+          solicitud_id?: string
+          taller_id?: string
+          url_pdf?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "informes_solicitud_id_fkey"
+            columns: ["solicitud_id"]
+            isOneToOne: false
+            referencedRelation: "solicitudes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "informes_taller_id_fkey"
+            columns: ["taller_id"]
+            isOneToOne: false
+            referencedRelation: "talleres"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      solicitudes: {
+        Row: {
+          anio: number
+          created_at: string
+          descripcion: string | null
+          estado: Database["public"]["Enums"]["solicitud_status"]
+          id: string
+          incluye_transporte: boolean
+          km: number
+          marca: string
+          modelo: string
+          precio_venta: number | null
+          provincia: string
+          taller_id: string | null
+          tipo_vehiculo: string
+          vendedor_id: string
+        }
+        Insert: {
+          anio: number
+          created_at?: string
+          descripcion?: string | null
+          estado?: Database["public"]["Enums"]["solicitud_status"]
+          id?: string
+          incluye_transporte?: boolean
+          km: number
+          marca: string
+          modelo: string
+          precio_venta?: number | null
+          provincia: string
+          taller_id?: string | null
+          tipo_vehiculo: string
+          vendedor_id: string
+        }
+        Update: {
+          anio?: number
+          created_at?: string
+          descripcion?: string | null
+          estado?: Database["public"]["Enums"]["solicitud_status"]
+          id?: string
+          incluye_transporte?: boolean
+          km?: number
+          marca?: string
+          modelo?: string
+          precio_venta?: number | null
+          provincia?: string
+          taller_id?: string | null
+          tipo_vehiculo?: string
+          vendedor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "solicitudes_taller_id_fkey"
+            columns: ["taller_id"]
+            isOneToOne: false
+            referencedRelation: "talleres"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "solicitudes_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      talleres: {
+        Row: {
+          activo: boolean
+          created_at: string
+          descripcion: string | null
+          direccion: string
+          id: string
+          nombre_taller: string
+          provincia: string
+          usuario_id: string
+        }
+        Insert: {
+          activo?: boolean
+          created_at?: string
+          descripcion?: string | null
+          direccion: string
+          id?: string
+          nombre_taller: string
+          provincia: string
+          usuario_id: string
+        }
+        Update: {
+          activo?: boolean
+          created_at?: string
+          descripcion?: string | null
+          direccion?: string
+          id?: string
+          nombre_taller?: string
+          provincia?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "talleres_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      usuarios: {
+        Row: {
+          created_at: string
+          email: string
+          estado: Database["public"]["Enums"]["user_status"]
+          id: string
+          nombre: string
+          telefono: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          estado?: Database["public"]["Enums"]["user_status"]
+          id?: string
+          nombre: string
+          telefono?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          estado?: Database["public"]["Enums"]["user_status"]
+          id?: string
+          nombre?: string
+          telefono?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "vendedor" | "taller" | "admin"
+      foto_tipo: "original" | "procesada"
+      solicitud_status:
+        | "pendiente"
+        | "asignado"
+        | "en_inspeccion"
+        | "contenido_generado"
+        | "publicado"
+      user_status: "pendiente" | "activo" | "rechazado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +427,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["vendedor", "taller", "admin"],
+      foto_tipo: ["original", "procesada"],
+      solicitud_status: [
+        "pendiente",
+        "asignado",
+        "en_inspeccion",
+        "contenido_generado",
+        "publicado",
+      ],
+      user_status: ["pendiente", "activo", "rechazado"],
+    },
   },
 } as const
