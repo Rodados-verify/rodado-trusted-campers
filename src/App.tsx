@@ -11,6 +11,8 @@ import RegistroVendedor from "./pages/RegistroVendedor";
 import RegistroTaller from "./pages/RegistroTaller";
 import ResetPassword from "./pages/ResetPassword";
 import VendedorDashboard from "./pages/VendedorDashboard";
+import VendedorFichaPage from "./pages/VendedorFichaPage";
+import VendedorCuentaPage from "./pages/VendedorCuentaPage";
 import TallerDashboard from "./pages/TallerDashboard";
 import TallerPendiente from "./pages/TallerPendiente";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -37,6 +39,22 @@ const App = () => (
               element={
                 <ProtectedRoute allowedRoles={["vendedor"]}>
                   <VendedorDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/vendedor/ficha"
+              element={
+                <ProtectedRoute allowedRoles={["vendedor"]}>
+                  <VendedorFichaPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/vendedor/cuenta"
+              element={
+                <ProtectedRoute allowedRoles={["vendedor"]}>
+                  <VendedorCuentaPage />
                 </ProtectedRoute>
               }
             />
