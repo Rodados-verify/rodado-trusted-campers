@@ -8,7 +8,7 @@ const TallerDashboard = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-lg text-center">
-        <Link to="/" className="mb-8 block font-display text-2xl font-bold text-foreground">
+        <Link to="/" className="mb-8 block font-display text-2xl font-bold text-forest">
           Rodado
         </Link>
         <div className="rounded-xl border border-border bg-card p-8">
