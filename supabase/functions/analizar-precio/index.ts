@@ -361,7 +361,7 @@ serve(async (req) => {
     // 1) Load vehicle to analyze
     const { data: solicitud, error: solError } = await supabase
       .from("solicitudes")
-      .select("marca, modelo, anio, km, precio_venta, provincia")
+      .select("marca, modelo, anio, km, precio_venta, provincia, tipo_vehiculo")
       .eq("id", solicitud_id)
       .single();
 
@@ -369,27 +369,37 @@ serve(async (req) => {
       throw new Error("Solicitud not found");
     }
 
-    const { marca, modelo, anio, km, precio_venta, provincia } = solicitud;
+    const { marca, modelo, anio, km, precio_venta, provincia, tipo_vehiculo } = solicitud;
+
+    // Load equipment/inspection data for context
+    const { data: inspeccion } = await supabase
+      .from("inspeccion_detalle")
+      .select(`
+        potencia_cv, cilindrada, plazas, longitud_mm, mma_kg, peso_vacio_kg,
+        cama_fija, dinette, cocina_fuegos, cocina_horno, banio_completo, ducha_separada,
+        ac_tiene, panel_solar_tiene, panel_solar_w, inversor_tiene, inversor_w,
+        calefaccion_webasto_tiene, toldo_tiene, bateria_servicio_ah, bateria_servicio_tipo,
+        agua_deposito_limpia_l, agua_deposito_grises_l, frigorifico_tipo,
+        extras_verificados, puntuacion_general, recomendacion, combustible, transmision
+      `)
+      .eq("solicitud_id", solicitud_id)
+      .maybeSingle();
 
     const marcaTokens = normalizeText(marca).split(" ").filter((t) => t.length >= 2);
     const modeloTokens = normalizeText(modelo).split(" ").filter((t) => t.length >= 3);
 
-    // 2) Discover direct listing URLs from search index (more robust against blocked search pages)
+    // 2) Discover direct listing URLs from search index
     const searchQueries = [
-      // Milanuncios - broader queries
       `site:milanuncios.com ${marca} ${modelo} autocaravana`,
       `site:milanuncios.com ${marca} ${modelo} camper`,
       `site:milanuncios.com "${marca} ${modelo}"`,
-      // Wallapop
       `site:wallapop.com ${marca} ${modelo} camper autocaravana`,
       `site:wallapop.com "${marca} ${modelo}" ${anio}`,
-      // Coches.net - broader queries without .aspx filter
       `site:coches.net ${marca} ${modelo} autocaravana`,
       `site:coches.net ${marca} ${modelo} camper`,
       `site:coches.net "${marca} ${modelo}" segunda mano`,
     ];
 
-    // Run Google search
     let googleResult: { urls: string[]; organicResults: GoogleOrganicResult[] } = { urls: [], organicResults: [] };
     try {
       googleResult = await runGoogleSearch(APIFY_TOKEN, searchQueries);
@@ -398,7 +408,7 @@ serve(async (req) => {
       console.error("Google search error:", err);
     }
 
-    // Strategy A: Extract comparables from Google snippets (works for JS-rendered sites like Milanuncios/Coches.net)
+    // Strategy A: Extract comparables from Google snippets
     const snippetComparables: ComparableCandidate[] = [];
     for (const result of googleResult.organicResults) {
       const fuente = detectFuenteFromUrl(result.url || "");
@@ -409,13 +419,12 @@ serve(async (req) => {
     }
     console.log(`Snippet extraction: ${snippetComparables.length} comparables from Milanuncios/Coches.net snippets`);
 
-    // Strategy B: Fetch Wallapop listing pages directly (they're server-rendered)
+    // Strategy B: Fetch Wallapop listing pages directly
     const wallapopUrls = googleResult.urls.filter((u) => {
       const f = detectFuenteFromUrl(u);
       return f === "wallapop" && isDirectListingUrl(u, f);
     });
 
-    // Also scrape Wallapop category pages for more item URLs
     const wallapopCategoryUrls = googleResult.urls.filter(
       (u) => u.includes("wallapop.com/") && !u.includes("/item/") && !u.includes("google.com"),
     );
@@ -445,7 +454,6 @@ serve(async (req) => {
     const allWallapopUrls = [...new Set([...wallapopUrls, ...extraWallapopUrls])].slice(0, 15);
     console.log(`Wallapop: ${wallapopUrls.length} direct + ${extraWallapopUrls.length} from categories = ${allWallapopUrls.length} to fetch`);
 
-    // Fetch Wallapop pages
     let fetchFailures = 0;
     const wallapopComparables = (
       await Promise.all(
@@ -461,7 +469,6 @@ serve(async (req) => {
     // Combine all comparables
     const comparableCandidates = [...wallapopComparables, ...snippetComparables];
 
-    // Dedupe by source + price + URL
     const seen = new Set<string>();
     const deduped = comparableCandidates.filter((c) => {
       const key = `${c.fuente}|${c.precio}|${c.url.toLowerCase()}`;
@@ -475,10 +482,7 @@ serve(async (req) => {
     const vehiculosFiltrados = deduped.slice(0, 15);
 
     const byFuente = vehiculosFiltrados.reduce(
-      (acc, row) => {
-        acc[row.fuente] += 1;
-        return acc;
-      },
+      (acc, row) => { acc[row.fuente] += 1; return acc; },
       { milanuncios: 0, wallapop: 0, coches: 0 } as Record<Fuente, number>,
     );
 
@@ -494,7 +498,6 @@ serve(async (req) => {
           message:
             "No hemos encontrado suficientes anuncios reales y comparables para un análisis fiable. Ajusta marca/modelo o vuelve a intentarlo más tarde.",
           debug: {
-            discovered_urls: uniqueListingUrls.length,
             comparables_total: vehiculosFiltrados.length,
             comparables_por_fuente: byFuente,
           },
@@ -510,31 +513,73 @@ serve(async (req) => {
     const precioMaximo = Math.max(...precios);
     const precioVendedor = Number(precio_venta || 0);
 
-    // 5) AI verdict over real comparables
+    // Build equipment summary for context
+    const equipmentParts: string[] = [];
+    if (inspeccion) {
+      if (inspeccion.potencia_cv) equipmentParts.push(`${inspeccion.potencia_cv} CV`);
+      if (inspeccion.combustible) equipmentParts.push(inspeccion.combustible);
+      if (inspeccion.transmision) equipmentParts.push(`cambio ${inspeccion.transmision}`);
+      if (inspeccion.plazas) equipmentParts.push(`${inspeccion.plazas} plazas`);
+      if (inspeccion.longitud_mm) equipmentParts.push(`${(inspeccion.longitud_mm / 1000).toFixed(1)}m largo`);
+      if (inspeccion.cama_fija) equipmentParts.push("cama fija");
+      if (inspeccion.dinette) equipmentParts.push("dinette");
+      if (inspeccion.cocina_fuegos) equipmentParts.push(`cocina ${inspeccion.cocina_fuegos} fuegos`);
+      if (inspeccion.banio_completo) equipmentParts.push("baño completo");
+      if (inspeccion.ducha_separada) equipmentParts.push("ducha separada");
+      if (inspeccion.ac_tiene) equipmentParts.push("aire acondicionado");
+      if (inspeccion.calefaccion_webasto_tiene) equipmentParts.push("calefacción estacionaria");
+      if (inspeccion.panel_solar_tiene) equipmentParts.push(`panel solar ${inspeccion.panel_solar_w || ""}W`);
+      if (inspeccion.inversor_tiene) equipmentParts.push(`inversor ${inspeccion.inversor_w || ""}W`);
+      if (inspeccion.toldo_tiene) equipmentParts.push("toldo");
+      if (inspeccion.bateria_servicio_ah) equipmentParts.push(`batería ${inspeccion.bateria_servicio_ah}Ah ${inspeccion.bateria_servicio_tipo || ""}`);
+      if (inspeccion.agua_deposito_limpia_l) equipmentParts.push(`depósito agua ${inspeccion.agua_deposito_limpia_l}L`);
+      if (inspeccion.frigorifico_tipo && inspeccion.frigorifico_tipo !== "no_tiene") equipmentParts.push(`frigorífico ${inspeccion.frigorifico_tipo}`);
+      if (inspeccion.extras_verificados?.length) equipmentParts.push(...inspeccion.extras_verificados);
+    }
+    const equipmentSummary = equipmentParts.length > 0 ? equipmentParts.join(", ") : "No disponible";
+
+    // Build detailed comparables list for the AI
+    const comparablesDetail = vehiculosFiltrados.map((v, i) =>
+      `  ${i + 1}. "${v.titulo}" — ${v.precio}€ — ${v.anio || "año desconocido"} — ${v.km || "km desconocidos"} — ${v.fuente}`
+    ).join("\n");
+
+    // 5) AI verdict with enriched context
     const prompt = `Eres un experto en valoración de autocaravanas y campers de ocasión en España.
-Analiza el precio de venta propuesto por el vendedor y compáralo con los vehículos similares encontrados en el mercado.
+Analiza el precio de venta propuesto y compáralo con los vehículos similares del mercado.
+
+IMPORTANTE: No te limites a comparar solo el precio medio. Debes ponderar y ajustar tu análisis considerando:
+- KILÓMETROS: Un vehículo con menos km vale más. Si el vehículo tiene 80.000km y un comparable tiene 200.000km a precio similar, el vendedor está bien posicionado.
+- AÑO: Vehículos más nuevos valen más. Pondera la diferencia de años.
+- EQUIPAMIENTO: Un camper con panel solar, calefacción estacionaria, baño completo, litio, etc. vale significativamente más que uno básico.
+- TIPO: Asegúrate de que los comparables son realmente autocaravanas/campers, no furgonetas de carga sin camperizar.
+- Si un comparable no tiene datos de km o año, dale menos peso en la valoración.
 
 Vehículo a valorar:
 - Marca y modelo: ${marca} ${modelo}
+- Tipo: ${tipo_vehiculo}
 - Año: ${anio}
-- Kilómetros: ${km}
-- Precio propuesto por el vendedor: ${precioVendedor}€
+- Kilómetros: ${km ? km.toLocaleString("es-ES") : "desconocidos"}
+- Precio propuesto: ${precioVendedor}€
 - Provincia: ${provincia}
+- Equipamiento verificado: ${equipmentSummary}
+${inspeccion?.puntuacion_general ? `- Puntuación inspección: ${inspeccion.puntuacion_general}/100` : ""}
 
-Datos del mercado actual (${vehiculosFiltrados.length} anuncios reales):
+Comparables encontrados en el mercado (${vehiculosFiltrados.length} anuncios):
+${comparablesDetail}
+
+Resumen numérico:
 - Precio mínimo: ${precioMinimo}€
 - Precio máximo: ${precioMaximo}€
-- Precio medio: ${precioMedio}€
-- Precios individuales: ${precios.join(", ")}€
+- Precio medio simple: ${precioMedio}€
 
 Responde SOLO en JSON con este formato exacto:
 {
   "veredicto": "caro" | "en_mercado" | "barato",
-  "diferencia_porcentaje": number,
+  "diferencia_porcentaje": number (positivo si está por encima del mercado ajustado, negativo si por debajo),
   "precio_recomendado_min": number,
   "precio_recomendado_max": number,
-  "precio_medio_mercado": number,
-  "analisis": "texto de 2-3 frases explicando el análisis",
+  "precio_medio_mercado": number (ajustado por km/año/equipamiento, NO el simple promedio),
+  "analisis": "texto de 3-4 frases explicando el análisis ponderado, mencionando factores como km, año y equipamiento que justifiquen la valoración",
   "consejo": "texto de 1-2 frases con recomendación concreta al vendedor",
   "num_comparables": number
 }`;
