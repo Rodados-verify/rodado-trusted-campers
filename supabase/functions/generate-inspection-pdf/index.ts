@@ -405,8 +405,8 @@ Deno.serve(async (req) => {
     page.drawRectangle({ x: MARGIN, y: selloY - 100, width: CONTENT_W, height: 110, color: FOREST, borderColor: OCRE, borderWidth: 2 });
     page.drawText("VEHÍCULO RODADO", { x: PAGE_W / 2 - 65, y: selloY - 30, size: 16, font: timesRoman, color: OCRE });
     page.drawText("Inspección verificada por taller especializado de la red Rodado", { x: PAGE_W / 2 - 170, y: selloY - 52, size: 9, font: helvetica, color: WHITE });
-    page.drawText("Este documento certifica que el vehículo ha sido inspeccionado según el protocolo", { x: PAGE_W / 2 - 210, y: selloY - 70, size: 8, font: helvetica, color: rgb(1, 1, 1, 0.7) });
-    page.drawText("de más de 80 puntos de revisión de Rodado.", { x: PAGE_W / 2 - 110, y: selloY - 82, size: 8, font: helvetica, color: rgb(1, 1, 1, 0.7) });
+    page.drawText("Este documento certifica que el vehículo ha sido inspeccionado según el protocolo", { x: PAGE_W / 2 - 210, y: selloY - 70, size: 8, font: helvetica, color: rgb(0.85, 0.85, 0.85) });
+    page.drawText("de más de 80 puntos de revisión de Rodado.", { x: PAGE_W / 2 - 110, y: selloY - 82, size: 8, font: helvetica, color: rgb(0.85, 0.85, 0.85) });
 
     // Serialize PDF
     const pdfBytes = await pdfDoc.save();
