@@ -9,7 +9,7 @@ export const SelloRodado = ({ size = "md" }: SelloRodadoProps) => {
     sm: { container: "h-16 w-16", icon: "h-3 w-3", text: "text-[7px]" },
     md: { container: "h-24 w-24", icon: "h-4 w-4", text: "text-[9px]" },
     lg: { container: "h-32 w-32", icon: "h-5 w-5", text: "text-[11px]" },
-    xl: { container: "h-[120px] w-[120px]", icon: "h-6 w-6", text: "text-xs" },
+    xl: { container: "h-[200px] w-[200px]", icon: "h-8 w-8", text: "text-sm" },
   };
 
   const s = sizeMap[size];
