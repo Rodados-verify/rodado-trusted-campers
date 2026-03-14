@@ -14,6 +14,7 @@ const VendedorFicha = () => {
   const [fichaSlug, setFichaSlug] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
