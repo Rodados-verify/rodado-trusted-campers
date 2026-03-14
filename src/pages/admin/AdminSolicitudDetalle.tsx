@@ -210,8 +210,9 @@ const AdminSolicitudDetalle = () => {
   if (!solicitud) return <div className="py-20 text-center"><p>Solicitud no encontrada</p></div>;
 
   const assignedTaller = talleres.find(t => t.id === solicitud.taller_id);
-  const canGenerate = solicitud.estado === "en_inspeccion" || solicitud.estado === "contenido_generado" || solicitud.estado === "asignado";
-  const canPublish = descripcion && (solicitud.estado === "contenido_generado" || solicitud.estado === "en_inspeccion");
+  const inspeccionCompleta = inspeccionDetalle && inspeccionDetalle.puntuacion_general !== null;
+  const canGenerate = inspeccionCompleta && (solicitud.estado === "en_inspeccion" || solicitud.estado === "contenido_generado");
+  const canPublish = inspeccionCompleta && descripcion && solicitud.estado === "contenido_generado";
 
   return (
     <div className="space-y-8">
