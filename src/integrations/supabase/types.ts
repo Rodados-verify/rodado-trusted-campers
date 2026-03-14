@@ -577,6 +577,44 @@ export type Database = {
           },
         ]
       }
+      leads: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          nombre: string | null
+          origen: string | null
+          solicitud_id: string
+          telefono: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          nombre?: string | null
+          origen?: string | null
+          solicitud_id: string
+          telefono?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          nombre?: string | null
+          origen?: string | null
+          solicitud_id?: string
+          telefono?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_solicitud_id_fkey"
+            columns: ["solicitud_id"]
+            isOneToOne: false
+            referencedRelation: "solicitudes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       solicitudes: {
         Row: {
           anio: number
