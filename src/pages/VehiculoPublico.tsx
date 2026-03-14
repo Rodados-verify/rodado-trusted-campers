@@ -19,7 +19,7 @@ const VehiculoPublico = () => {
   const { slug } = useParams<{ slug: string }>();
   const [ficha, setFicha] = useState<any>(null);
   const [solicitud, setSolicitud] = useState<any>(null);
-  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [photos, setPhotos] = useState<GalleryPhoto[]>([]);
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
   const [informe, setInforme] = useState<any>(null);
   const [inspeccion, setInspeccion] = useState<any>(null);
