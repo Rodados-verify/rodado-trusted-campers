@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Download, Upload, X, Eye } from "lucide-react";
+import { ArrowLeft, Download, Eye, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SolicitudStepper from "@/components/vendedor/SolicitudStepper";
 
@@ -27,66 +27,53 @@ const AdminSolicitudDetalle = () => {
   const [solicitud, setSolicitud] = useState<any>(null);
   const [vendedor, setVendedor] = useState<any>(null);
   const [fotosOriginales, setFotosOriginales] = useState<any[]>([]);
-  const [fotosTaller, setFotosTaller] = useState<any[]>([]);
   const [talleres, setTalleres] = useState<any[]>([]);
   const [selectedTaller, setSelectedTaller] = useState("");
   const [informe, setInforme] = useState<any>(null);
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
+  const [ficha, setFicha] = useState<any>(null);
+  const [fotosProcesadas, setFotosProcesadas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Publication form
   const [descripcion, setDescripcion] = useState("");
   const [precioFinal, setPrecioFinal] = useState<number | null>(null);
   const [incluyeTransporte, setIncluyeTransporte] = useState(false);
-  const [fotosProcesadas, setFotosProcesadas] = useState<File[]>([]);
-  const [fotoProcPreviews, setFotoProcPreviews] = useState<string[]>([]);
+  const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     const fetchAll = async () => {
-      // Solicitud
       const { data: sol } = await supabase.from("solicitudes").select("*").eq("id", id).single();
       if (!sol) { setLoading(false); return; }
       setSolicitud(sol);
       setPrecioFinal(sol.precio_venta ? Number(sol.precio_venta) : null);
       setIncluyeTransporte(sol.incluye_transporte);
 
-      // Vendedor
       const { data: vend } = await supabase.from("usuarios").select("*").eq("id", sol.vendedor_id).single();
       setVendedor(vend);
 
-      // Fotos originales
       const { data: fotos } = await supabase.from("fotos_solicitud").select("*").eq("solicitud_id", id).eq("tipo", "original");
       setFotosOriginales(fotos || []);
 
-      // Fotos taller (also original tipo uploaded by taller)
-      const { data: ft } = await supabase.from("fotos_solicitud").select("*").eq("solicitud_id", id);
-      setFotosTaller(ft || []);
-
-      // Talleres activos
       const { data: talleresData } = await supabase.from("talleres").select("*").eq("activo", true);
       setTalleres(talleresData || []);
 
-      // Informe
       const { data: inf } = await supabase.from("informes").select("*").eq("solicitud_id", id).maybeSingle();
       setInforme(inf);
 
-      // Checklist
       const { data: cl } = await supabase.from("checklist_items").select("*").eq("solicitud_id", id);
       setChecklistItems(cl || []);
 
-      // Existing ficha
-      const { data: ficha } = await supabase.from("fichas").select("*").eq("solicitud_id", id).maybeSingle();
-      if (ficha?.descripcion_generada) setDescripcion(ficha.descripcion_generada);
-      if (ficha?.precio_final) setPrecioFinal(Number(ficha.precio_final));
-      if (ficha?.incluye_transporte_final) setIncluyeTransporte(ficha.incluye_transporte_final);
+      const { data: fichaData } = await supabase.from("fichas").select("*").eq("solicitud_id", id).maybeSingle();
+      setFicha(fichaData);
+      if (fichaData?.descripcion_generada) setDescripcion(fichaData.descripcion_generada);
+      if (fichaData?.precio_final) setPrecioFinal(Number(fichaData.precio_final));
+      if (fichaData?.incluye_transporte_final) setIncluyeTransporte(fichaData.incluye_transporte_final);
 
-      // Existing fotos procesadas
       const { data: fp } = await supabase.from("fotos_solicitud").select("*").eq("solicitud_id", id).eq("tipo", "procesada");
-      if (fp && fp.length > 0) {
-        setFotoProcPreviews(fp.map(f => f.url));
-      }
+      setFotosProcesadas(fp || []);
 
       setLoading(false);
     };
@@ -109,42 +96,39 @@ const AdminSolicitudDetalle = () => {
     toast({ title: `Estado cambiado a "${newStatus}"` });
   };
 
-  const handleProcesadasUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const remaining = 30 - fotosProcesadas.length;
-    const toAdd = files.slice(0, remaining);
-    setFotosProcesadas(prev => [...prev, ...toAdd]);
-    toAdd.forEach(f => {
-      const reader = new FileReader();
-      reader.onloadend = () => setFotoProcPreviews(prev => [...prev, reader.result as string]);
-      reader.readAsDataURL(f);
-    });
-  };
+  const generateContent = async () => {
+    if (!id) return;
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-ficha-content", {
+        body: { solicitud_id: id },
+      });
+      if (error) throw error;
+      setDescripcion(data.description);
+      setSolicitud((prev: any) => ({ ...prev, estado: "contenido_generado" }));
 
-  const removeProcesada = (i: number) => {
-    setFotosProcesadas(prev => prev.filter((_, idx) => idx !== i));
-    setFotoProcPreviews(prev => prev.filter((_, idx) => idx !== i));
+      // Refresh fotos procesadas and ficha
+      const { data: fp } = await supabase.from("fotos_solicitud").select("*").eq("solicitud_id", id).eq("tipo", "procesada");
+      setFotosProcesadas(fp || []);
+      const { data: fichaData } = await supabase.from("fichas").select("*").eq("solicitud_id", id).maybeSingle();
+      setFicha(fichaData);
+
+      toast({ title: "Contenido generado", description: "Descripción y fotos procesadas listas. Revisa y publica." });
+    } catch (err: any) {
+      toast({ title: "Error al generar", description: err.message, variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const publishFicha = async () => {
     if (!id || !solicitud) return;
     setPublishing(true);
     try {
-      // Upload processed photos
-      for (const photo of fotosProcesadas) {
-        const ext = photo.name.split(".").pop();
-        const path = `admin/${id}/${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("solicitud-fotos").upload(path, photo);
-        if (upErr) { console.error(upErr); continue; }
-        const { data: urlData } = supabase.storage.from("solicitud-fotos").getPublicUrl(path);
-        await supabase.from("fotos_solicitud").insert({ solicitud_id: id, url: urlData.publicUrl, tipo: "procesada" });
-      }
-
-      // Generate slug
       const shortId = id.substring(0, 4);
-      const slug = `${solicitud.marca}-${solicitud.modelo}-${solicitud.anio}-${shortId}`.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      const slug = `${solicitud.marca}-${solicitud.modelo}-${solicitud.anio}-${shortId}`
+        .toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 
-      // Upsert ficha
       const { data: existingFicha } = await supabase.from("fichas").select("id").eq("solicitud_id", id).maybeSingle();
       if (existingFicha) {
         await supabase.from("fichas").update({
@@ -165,9 +149,13 @@ const AdminSolicitudDetalle = () => {
         });
       }
 
-      // Update estado
       await supabase.from("solicitudes").update({ estado: "publicado" }).eq("id", id);
       setSolicitud((prev: any) => ({ ...prev, estado: "publicado" }));
+
+      // Refresh ficha
+      const { data: fichaData } = await supabase.from("fichas").select("*").eq("solicitud_id", id).maybeSingle();
+      setFicha(fichaData);
+
       toast({ title: "¡Ficha publicada!", description: `Disponible en /vehiculo/${slug}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -180,6 +168,8 @@ const AdminSolicitudDetalle = () => {
   if (!solicitud) return <div className="py-20 text-center"><p>Solicitud no encontrada</p></div>;
 
   const assignedTaller = talleres.find(t => t.id === solicitud.taller_id);
+  const canGenerate = solicitud.estado === "en_inspeccion" || solicitud.estado === "contenido_generado" || solicitud.estado === "asignado";
+  const canPublish = descripcion && (solicitud.estado === "contenido_generado" || solicitud.estado === "en_inspeccion");
 
   return (
     <div className="space-y-8">
@@ -234,7 +224,6 @@ const AdminSolicitudDetalle = () => {
           </div>
         )}
 
-        {/* Fotos originales */}
         {fotosOriginales.length > 0 && (
           <div>
             <p className="mb-3 text-sm font-medium">Fotos del vendedor ({fotosOriginales.length})</p>
@@ -277,7 +266,6 @@ const AdminSolicitudDetalle = () => {
           </div>
         )}
 
-        {/* Informe del taller */}
         {informe && (
           <div className="border-t border-border pt-4 space-y-3">
             <p className="text-sm font-medium">Informe del taller</p>
@@ -295,7 +283,6 @@ const AdminSolicitudDetalle = () => {
           </div>
         )}
 
-        {/* Checklist summary */}
         {checklistItems.length > 0 && (
           <div className="border-t border-border pt-4">
             <p className="mb-2 text-sm font-medium">Checklist de inspección</p>
@@ -321,73 +308,79 @@ const AdminSolicitudDetalle = () => {
         )}
       </div>
 
-      {/* Bloque 3 - Publicación */}
-      {(solicitud.estado === "contenido_generado" || solicitud.estado === "publicado" || solicitud.estado === "en_inspeccion") && (
-        <div className="rounded-xl border border-border bg-white p-6 space-y-6">
-          <h3 className="font-display text-lg font-semibold">Contenido y publicación</h3>
+      {/* Bloque 3 - Contenido y publicación */}
+      <div className="rounded-xl border border-border bg-white p-6 space-y-6">
+        <h3 className="font-display text-lg font-semibold">Contenido y publicación</h3>
 
-          <div>
-            <Label>Descripción del vehículo</Label>
-            <Textarea
-              value={descripcion}
-              onChange={e => setDescripcion(e.target.value)}
-              placeholder="Escribe la descripción para la ficha pública…"
-              className="mt-1.5 min-h-[200px] bg-white"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Precio de venta definitivo (€)</Label>
-              <Input type="number" value={precioFinal ?? ""} onChange={e => setPrecioFinal(e.target.value ? Number(e.target.value) : null)} className="mt-1.5 bg-white" />
-            </div>
-            <div className="flex items-end pb-2">
-              <div className="flex items-center gap-2">
-                <Checkbox id="transporte-final" checked={incluyeTransporte} onCheckedChange={c => setIncluyeTransporte(!!c)} />
-                <Label htmlFor="transporte-final">Incluye transporte a domicilio</Label>
-              </div>
-            </div>
-          </div>
-
-          {/* Fotos procesadas upload */}
-          <div>
-            <Label>Fotos procesadas finales</Label>
-            <label htmlFor="proc-upload" className="mt-2 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-forest/30 bg-forest/5 p-6 transition-colors hover:border-forest/50">
-              <Upload className="h-6 w-6 text-forest" />
-              <span className="text-sm">Subir fotos procesadas ({fotoProcPreviews.length}/30)</span>
-            </label>
-            <input id="proc-upload" type="file" accept="image/*" multiple className="hidden" onChange={handleProcesadasUpload} disabled={fotosProcesadas.length >= 30} />
-            {fotoProcPreviews.length > 0 && (
-              <div className="mt-3 grid grid-cols-4 gap-2 lg:grid-cols-6">
-                {fotoProcPreviews.map((src, i) => (
-                  <div key={i} className="group relative aspect-[4/3] overflow-hidden rounded-lg border border-border">
-                    <img src={src} alt="" className="h-full w-full object-cover" />
-                    <button type="button" onClick={() => removeProcesada(i)} className="absolute right-1 top-1 rounded-full bg-foreground/70 p-1 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
+        {/* Generate content button */}
+        {solicitud.estado !== "publicado" && (
+          <Button
+            variant="ocre"
+            onClick={generateContent}
+            disabled={generating || !canGenerate}
+          >
+            {generating ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generando contenido…</>
+            ) : (
+              <><Sparkles className="mr-2 h-4 w-4" /> Generar descripción y fotos automáticamente</>
             )}
-          </div>
+          </Button>
+        )}
 
-          {solicitud.estado !== "publicado" && (
-            <Button variant="ocre" size="lg" onClick={publishFicha} disabled={publishing || !descripcion}>
-              {publishing ? "Publicando…" : "Publicar ficha"}
-            </Button>
-          )}
-
-          {solicitud.estado === "publicado" && (
-            <div className="flex items-center gap-3">
-              <Button variant="ocre" asChild>
-                <a href={`/vehiculo/${solicitud.marca}-${solicitud.modelo}-${solicitud.anio}-${id?.substring(0, 4)}`.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-/]/g, "")} target="_blank" rel="noopener noreferrer">
-                  <Eye className="mr-2 h-4 w-4" /> Ver ficha publicada
-                </a>
-              </Button>
-            </div>
-          )}
+        {/* Description */}
+        <div>
+          <Label>Descripción del vehículo (generada automáticamente, editable)</Label>
+          <Textarea
+            value={descripcion}
+            onChange={e => setDescripcion(e.target.value)}
+            placeholder="Pulsa 'Generar descripción' para crear el contenido automáticamente…"
+            className="mt-1.5 min-h-[200px] bg-white"
+          />
         </div>
-      )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>Precio de venta definitivo (€)</Label>
+            <Input type="number" value={precioFinal ?? ""} onChange={e => setPrecioFinal(e.target.value ? Number(e.target.value) : null)} className="mt-1.5 bg-white" />
+          </div>
+          <div className="flex items-end pb-2">
+            <div className="flex items-center gap-2">
+              <Checkbox id="transporte-final" checked={incluyeTransporte} onCheckedChange={c => setIncluyeTransporte(!!c)} />
+              <Label htmlFor="transporte-final">Incluye transporte a domicilio</Label>
+            </div>
+          </div>
+        </div>
+
+        {/* Fotos procesadas preview */}
+        {fotosProcesadas.length > 0 && (
+          <div>
+            <Label>Fotos procesadas ({fotosProcesadas.length})</Label>
+            <div className="mt-2 grid grid-cols-4 gap-2 lg:grid-cols-6">
+              {fotosProcesadas.map((f) => (
+                <div key={f.id} className="aspect-[4/3] overflow-hidden rounded-lg border border-border">
+                  <img src={f.url} alt="" className="h-full w-full object-cover" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {solicitud.estado !== "publicado" && (
+          <Button variant="ocre" size="lg" onClick={publishFicha} disabled={publishing || !canPublish}>
+            {publishing ? "Publicando…" : "Publicar ficha"}
+          </Button>
+        )}
+
+        {solicitud.estado === "publicado" && ficha?.slug && (
+          <div className="flex items-center gap-3">
+            <Button variant="ocre" asChild>
+              <a href={`/vehiculo/${ficha.slug}`} target="_blank" rel="noopener noreferrer">
+                <Eye className="mr-2 h-4 w-4" /> Ver ficha publicada
+              </a>
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
