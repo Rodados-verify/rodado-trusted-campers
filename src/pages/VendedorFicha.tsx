@@ -95,7 +95,7 @@ const VendedorFicha = () => {
         <>
           <div className="overflow-hidden rounded-xl border border-border bg-white">
             <iframe
-              src={`/ficha/${fichaSlug}`}
+              src={`/vehiculo/${fichaSlug}`}
               className="h-[600px] w-full border-0"
               title="Mi ficha Rodado"
             />
