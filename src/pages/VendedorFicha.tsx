@@ -103,7 +103,7 @@ const VendedorFicha = () => {
 
           <div className="flex flex-wrap gap-3">
             <Button variant="ocre" asChild>
-              <a href={`/ficha/${fichaSlug}`} target="_blank" rel="noopener noreferrer">
+              <a href={`/vehiculo/${fichaSlug}`} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="mr-2 h-4 w-4" /> Abrir en nueva pestaña
               </a>
             </Button>
