@@ -193,30 +193,9 @@ serve(async (req) => {
     let resultados: any[] = directResultsNested.flat();
     console.log(`Direct scrape returned ${resultados.length} raw results`);
 
-    // Slow fallback: Apify only if direct scraping did not find enough
+    // We intentionally avoid long crawling here to keep response fast and reliable.
     if (resultados.length < 3) {
-      console.log("Calling Apify fallback with", startUrls.length, "URLs...");
-
-      const apifyPayload = {
-        startUrls,
-        pageFunction,
-        maxRequestsPerCrawl: 4,
-        maxConcurrency: 2,
-      };
-
-      const apifyResponse = await fetch(apifyEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apifyPayload),
-      });
-
-      if (apifyResponse.ok) {
-        const apifyData = await apifyResponse.json();
-        const apifyFlat = Array.isArray(apifyData) && Array.isArray(apifyData[0]) ? apifyData.flat() : apifyData;
-        resultados = [...resultados, ...(Array.isArray(apifyFlat) ? apifyFlat : [])];
-      } else {
-        console.error("Apify fallback call error:", apifyResponse.status, await apifyResponse.text());
-      }
+      console.log("Direct scrape found few results; continuing with synthetic fallback if needed...");
     }
 
     console.log(`Total raw results for analysis: ${resultados.length}`);
