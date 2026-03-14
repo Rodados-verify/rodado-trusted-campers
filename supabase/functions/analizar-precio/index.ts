@@ -295,6 +295,9 @@ const fetchComparableFromListing = async (
     const plainText = cleanHtmlToText(html);
     const title = extractTitle(html);
 
+    // Filter out non-camper vehicles
+    if (!isCamperVehicle(`${title} ${plainText.slice(0, 500)}`)) return null;
+
     const prices = extractPriceCandidates(html, plainText);
     const price = prices[0] || 0;
     if (!price) return null;
@@ -303,6 +306,7 @@ const fetchComparableFromListing = async (
     const kmNum = extractKm(`${title} ${plainText}`);
 
     const relevanceText = normalizeText(`${title} ${url}`);
+    const fullText = normalizeText(`${title} ${plainText.slice(0, 500)}`);
     const hasMarca = marcaTokens.some((t) => relevanceText.includes(t));
     const modelMatches = modeloTokens.filter((t) => relevanceText.includes(t)).length;
 
@@ -311,11 +315,13 @@ const fetchComparableFromListing = async (
     if (yearNum > 0 && Math.abs(yearNum - targetYear) > 8) return null;
     if (kmNum > 0 && kmNum > Math.max(targetKm * 2.3, 360000)) return null;
 
-    const score =
-      modelMatches * 2 +
-      (yearNum > 0 ? Math.max(0, 3 - Math.abs(yearNum - targetYear)) : 0) +
-      (kmNum > 0 ? 1 : 0) +
-      2;
+    const yearProximity = yearNum > 0 ? Math.max(0, 5 - Math.abs(yearNum - targetYear)) : 0;
+    const kmProximity = kmNum > 0 && targetKm > 0
+      ? Math.max(0, 3 - Math.abs(kmNum - targetKm) / (targetKm * 0.5))
+      : 0;
+    const hasCamperKeyword = CAMPER_KEYWORDS.some((kw) => fullText.includes(normalizeText(kw))) ? 3 : 0;
+
+    const score = modelMatches * 2 + yearProximity + kmProximity + hasCamperKeyword + 2;
 
     return {
       titulo: title,
