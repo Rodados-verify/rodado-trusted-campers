@@ -74,7 +74,8 @@ const isDirectListingUrl = (url: string, fuente: Fuente): boolean => {
   if (!u.startsWith("http")) return false;
 
   if (fuente === "wallapop") {
-    return /\/item\//.test(u) && !u.includes("/app/search");
+    const isValidHost = u.includes("es.wallapop.com") || u.includes("www.wallapop.com");
+    return isValidHost && /\/item\//.test(u) && !u.includes("/app/search");
   }
 
   if (fuente === "coches") {
