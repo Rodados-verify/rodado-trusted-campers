@@ -211,12 +211,35 @@ const AdminSolicitudDetalle = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" asChild><Link to="/admin"><ArrowLeft className="mr-1 h-4 w-4" /> Volver</Link></Button>
-        <div>
-          <h1 className="font-display text-2xl font-bold">{solicitud.marca} {solicitud.modelo} · {solicitud.anio}</h1>
-          <p className="text-sm text-muted-foreground">ID: {solicitud.id.substring(0, 8)}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" asChild><Link to="/admin"><ArrowLeft className="mr-1 h-4 w-4" /> Volver</Link></Button>
+          <div>
+            <h1 className="font-display text-2xl font-bold">{solicitud.marca} {solicitud.modelo} · {solicitud.anio}</h1>
+            <p className="text-sm text-muted-foreground">ID: {solicitud.id.substring(0, 8)}</p>
+          </div>
         </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="sm" disabled={deleting}>
+              <Trash2 className="mr-1 h-4 w-4" /> Eliminar
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar esta solicitud?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Se borrarán permanentemente todos los datos: fotos, informes, inspección, checklist y ficha publicada. Esta acción no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={deleteSolicitud} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                {deleting ? "Eliminando…" : "Eliminar definitivamente"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* Stepper */}
