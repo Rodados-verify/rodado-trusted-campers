@@ -232,83 +232,8 @@ const extractComparableFromSnippet = (
   };
 };
 
-// Scrape listing URLs from platform category/search pages
-const scrapeListingUrlsFromPlatform = async (
-  marca: string,
-  modelo: string,
-  allDiscoveredUrls: string[],
-): Promise<string[]> => {
-  const urls: string[] = [];
-  const headers = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
-    "Accept-Language": "es-ES,es;q=0.9",
-    Accept: "text/html,application/xhtml+xml",
-  };
 
-  // 1) Scrape Wallapop category pages found by Google to extract individual /item/ URLs
-  const wallapopCategoryUrls = allDiscoveredUrls.filter(
-    (u) => u.includes("wallapop.com/") && !u.includes("/item/") && !u.includes("google.com"),
-  );
-  
-  for (const catUrl of wallapopCategoryUrls.slice(0, 4)) {
-    try {
-      const res = await fetch(catUrl, { headers, signal: AbortSignal.timeout(8000) });
-      if (!res.ok) { await res.text(); continue; }
-      const html = await res.text();
-      const itemMatches = [...html.matchAll(/href=["'](https?:\/\/[^"']*wallapop\.com\/item\/[^"']+)["']/gi)];
-      for (const m of itemMatches) urls.push(m[1]);
-      // Also try relative URLs
-      const relMatches = [...html.matchAll(/href=["'](\/item\/[^"']+)["']/gi)];
-      for (const m of relMatches) urls.push(`https://es.wallapop.com${m[1]}`);
-    } catch { /* skip */ }
-  }
 
-  // 2) Milanuncios - try their search page
-  const milanQuery = encodeURIComponent(`${marca} ${modelo}`);
-  for (const cat of ["autocaravanas-de-segunda-mano", "campers-de-segunda-mano", "furgonetas-de-segunda-mano"]) {
-    try {
-      const res = await fetch(
-        `https://www.milanuncios.com/${cat}/?fromSearch=${milanQuery}&orden=relevance`,
-        { headers, signal: AbortSignal.timeout(8000) },
-      );
-      if (!res.ok) { await res.text(); continue; }
-      const html = await res.text();
-      // Extract listing URLs - various patterns
-      const matches = [
-        ...html.matchAll(/href=["'](\/[^"']*?-\d{6,}\.htm)["']/gi),
-        ...html.matchAll(/href=["'](https?:\/\/www\.milanuncios\.com\/[^"']*?-\d{6,}\.htm)["']/gi),
-      ];
-      for (const m of matches) {
-        const href = m[1].startsWith("http") ? m[1] : `https://www.milanuncios.com${m[1]}`;
-        urls.push(href);
-      }
-    } catch { /* skip */ }
-  }
-
-  // 3) Coches.net category pages found by Google
-  const cochesCategoryUrls = allDiscoveredUrls.filter(
-    (u) => u.includes("coches.net/") && !u.includes(".aspx") && !u.includes("google.com"),
-  );
-  
-  for (const catUrl of cochesCategoryUrls.slice(0, 3)) {
-    try {
-      const res = await fetch(catUrl, { headers, signal: AbortSignal.timeout(8000) });
-      if (!res.ok) { await res.text(); continue; }
-      const html = await res.text();
-      const matches = [
-        ...html.matchAll(/href=["'](\/[^"']*?\d{5,}[^"']*?\.aspx)["']/gi),
-        ...html.matchAll(/href=["'](https?:\/\/www\.coches\.net\/[^"']*?\d{5,}[^"']*?)["']/gi),
-      ];
-      for (const m of matches) {
-        const href = m[1].startsWith("http") ? m[1] : `https://www.coches.net${m[1]}`;
-        urls.push(href);
-      }
-    } catch { /* skip */ }
-  }
-
-  console.log(`Platform scraping found: ${urls.length} URLs`);
-  return [...new Set(urls)];
-};
 
 
 
