@@ -385,17 +385,27 @@ serve(async (req) => {
       console.log("Rejected URLs (not matching listing pattern):", rejectedUrls.slice(0, 10).join("\n"))
     }
 
-    const uniqueListingUrls = [...new Set(directListingUrls)].slice(0, 24);
-    console.log(`Discovered ${uniqueListingUrls.length} direct listing URLs`);
+    // Balance URLs by source to avoid one platform dominating
+    const bySource: Record<string, string[]> = { wallapop: [], milanuncios: [], coches: [] };
+    for (const u of [...new Set(directListingUrls)]) {
+      const f = detectFuenteFromUrl(u);
+      if (f && bySource[f].length < 12) bySource[f].push(u);
+    }
+    const uniqueListingUrls = [...bySource.wallapop, ...bySource.milanuncios, ...bySource.coches];
+    console.log(`Balanced listing URLs: wallapop=${bySource.wallapop.length}, milanuncios=${bySource.milanuncios.length}, coches=${bySource.coches.length}`);
 
     // 3) Extract each listing data from listing page itself
+    let fetchFailures = 0;
     const comparableCandidates = (
       await Promise.all(
-        uniqueListingUrls.map((url) =>
-          fetchComparableFromListing(url, marcaTokens, modeloTokens, anio, km || 200000),
-        ),
+        uniqueListingUrls.map(async (url) => {
+          const result = await fetchComparableFromListing(url, marcaTokens, modeloTokens, anio, km || 200000);
+          if (!result) fetchFailures++;
+          return result;
+        }),
       )
     ).filter(Boolean) as ComparableCandidate[];
+    console.log(`Fetch results: ${comparableCandidates.length} extracted, ${fetchFailures} failed`);
 
     // Dedupe by source + price + URL
     const seen = new Set<string>();
