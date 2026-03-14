@@ -1,52 +1,113 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { SelloRodado } from "@/components/SelloRodado";
 import { VehiculoGallery } from "@/components/vehiculo/VehiculoGallery";
 import { VehiculoContactModal } from "@/components/vehiculo/VehiculoContactModal";
 import { VehiculoInspeccion } from "@/components/vehiculo/VehiculoInspeccion";
 import { Button } from "@/components/ui/button";
-import { Truck, MapPin, Gauge, Calendar, CarFront, Shield } from "lucide-react";
+import { Truck, MapPin, Gauge, CarFront, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface Photo {
+  id: string;
+  publicUrl: string;
+}
 
 const VehiculoPublico = () => {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const [ficha, setFicha] = useState<any>(null);
   const [solicitud, setSolicitud] = useState<any>(null);
-  const [photos, setPhotos] = useState<any[]>([]);
+  const [photos, setPhotos] = useState<Photo[]>([]);
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
   const [informe, setInforme] = useState<any>(null);
   const [vendedor, setVendedor] = useState<any>(null);
+  const [tallerNombre, setTallerNombre] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       if (!slug) return;
-      const { data: f } = await supabase.from("fichas").select("*").eq("slug", slug).eq("activa", true).maybeSingle();
-      if (!f) { setLoading(false); return; }
+
+      // 1. Fetch ficha
+      const { data: f } = await supabase
+        .from("fichas")
+        .select("*")
+        .eq("slug", slug)
+        .eq("activa", true)
+        .maybeSingle();
+
+      if (!f) {
+        setLoading(false);
+        return;
+      }
       setFicha(f);
 
-      const { data: sol } = await supabase.from("solicitudes").select("*").eq("id", f.solicitud_id).single();
+      // 2. Fetch solicitud
+      const { data: sol } = await supabase
+        .from("solicitudes")
+        .select("*")
+        .eq("id", f.solicitud_id)
+        .single();
       setSolicitud(sol);
 
-      // Photos: procesadas first, then originales
-      const { data: fp } = await supabase.from("fotos_solicitud").select("*").eq("solicitud_id", f.solicitud_id).eq("tipo", "procesada");
-      const { data: fo } = await supabase.from("fotos_solicitud").select("*").eq("solicitud_id", f.solicitud_id).eq("tipo", "original");
-      const allPhotos = [...(fp || []), ...(fo || [])];
-      // Deduplicate by URL (procesadas may be copies of originals)
-      const seen = new Set<string>();
-      const deduped = allPhotos.filter(p => { if (seen.has(p.url)) return false; seen.add(p.url); return true; });
-      setPhotos(deduped);
+      // 3. Fetch ALL photos, ordered by creation
+      const { data: allFotos } = await supabase
+        .from("fotos_solicitud")
+        .select("id, url, tipo")
+        .eq("solicitud_id", f.solicitud_id)
+        .order("created_at", { ascending: true });
 
-      const { data: cl } = await supabase.from("checklist_items").select("*").eq("solicitud_id", f.solicitud_id);
+      const procesadas = (allFotos || []).filter((fo: any) => fo.tipo === "procesada");
+      const originales = (allFotos || []).filter((fo: any) => fo.tipo === "original");
+      const fotosToShow = procesadas.length > 0 ? procesadas : originales;
+
+      // Convert relative paths to public URLs via Supabase Storage
+      const resolvedPhotos: Photo[] = fotosToShow.map((fo: any) => {
+        // If the URL is already absolute (https://...), use it directly
+        if (fo.url.startsWith("http")) {
+          return { id: fo.id, publicUrl: fo.url };
+        }
+        // Otherwise, resolve via storage bucket
+        const { data } = supabase.storage.from("solicitud-fotos").getPublicUrl(fo.url);
+        return { id: fo.id, publicUrl: data.publicUrl };
+      });
+      setPhotos(resolvedPhotos);
+
+      // 4. Checklist
+      const { data: cl } = await supabase
+        .from("checklist_items")
+        .select("*")
+        .eq("solicitud_id", f.solicitud_id);
       setChecklistItems(cl || []);
 
-      const { data: inf } = await supabase.from("informes").select("*").eq("solicitud_id", f.solicitud_id).maybeSingle();
+      // 5. Informe
+      const { data: inf } = await supabase
+        .from("informes")
+        .select("*")
+        .eq("solicitud_id", f.solicitud_id)
+        .maybeSingle();
       setInforme(inf);
 
+      // 6. Vendedor
       if (sol) {
-        const { data: v } = await supabase.from("usuarios").select("nombre, telefono, email").eq("id", sol.vendedor_id).single();
+        const { data: v } = await supabase
+          .from("usuarios")
+          .select("nombre, telefono, email")
+          .eq("id", sol.vendedor_id)
+          .single();
         setVendedor(v);
+
+        // 7. Taller name
+        if (sol.taller_id) {
+          const { data: t } = await supabase
+            .from("talleres")
+            .select("nombre_taller")
+            .eq("id", sol.taller_id)
+            .maybeSingle();
+          if (t) setTallerNombre(t.nombre_taller);
+        }
       }
 
       setLoading(false);
@@ -62,16 +123,24 @@ const VehiculoPublico = () => {
 
     const setMeta = (name: string, content: string) => {
       let tag = document.querySelector(`meta[property="${name}"], meta[name="${name}"]`);
-      if (!tag) { tag = document.createElement("meta"); tag.setAttribute(name.startsWith("og:") ? "property" : "name", name); document.head.appendChild(tag); }
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute(name.startsWith("og:") ? "property" : "name", name);
+        document.head.appendChild(tag);
+      }
       tag.setAttribute("content", content);
     };
 
-    const desc = ficha.descripcion_generada?.substring(0, 155) || `${solicitud.marca} ${solicitud.modelo} ${solicitud.anio} — ${solicitud.km?.toLocaleString("es-ES")} km — Vehículo inspeccionado por la red Rodado`;
+    const descText = ficha.descripcion_generada && ficha.descripcion_generada !== "Descripción pendiente de revisión"
+      ? ficha.descripcion_generada
+      : solicitud.descripcion || "";
+    const desc = descText.substring(0, 160) || `${solicitud.marca} ${solicitud.modelo} ${solicitud.anio} — Vehículo inspeccionado por la red Rodado`;
+    
     setMeta("description", desc);
     setMeta("og:title", title);
     setMeta("og:description", desc);
     setMeta("og:type", "product");
-    if (photos.length > 0) setMeta("og:image", photos[0].url);
+    if (photos.length > 0) setMeta("og:image", photos[0].publicUrl);
 
     return () => { document.title = "Rodado"; };
   }, [solicitud, ficha, photos]);
@@ -98,6 +167,11 @@ const VehiculoPublico = () => {
   const precio = ficha.precio_final ? Number(ficha.precio_final) : solicitud.precio_venta ? Number(solicitud.precio_venta) : null;
   const showTransport = ficha.incluye_transporte_final || solicitud.incluye_transporte;
 
+  // Description: generated first, fallback to seller's
+  const description = ficha.descripcion_generada && ficha.descripcion_generada !== "Descripción pendiente de revisión"
+    ? ficha.descripcion_generada
+    : solicitud.descripcion;
+
   // Equipment pills from puntos_positivos
   const equipmentPills = informe?.puntos_positivos
     ? informe.puntos_positivos.split(/[,.\n;]+/).map((s: string) => s.trim()).filter((s: string) => s.length > 3 && s.length < 60)
@@ -106,52 +180,64 @@ const VehiculoPublico = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 z-40">
+      <header className="border-b border-border bg-white/90 backdrop-blur-sm sticky top-0 z-40">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
           <Link to="/" className="font-display text-xl font-bold text-forest">Rodado</Link>
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-ocre" />
-            <span className="text-xs font-medium text-muted-foreground">Vehículo verificado</span>
+            <span className="text-xs font-medium text-muted-foreground hidden sm:inline">Vehículo verificado</span>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-10">
-        {/* Mobile: Title + Price first */}
-        <div className="lg:hidden mb-6">
-          <h1 className="font-display text-3xl font-bold text-foreground leading-tight">
-            {solicitud.marca} {solicitud.modelo}
-          </h1>
-          <p className="mt-1 text-lg text-muted-foreground">{solicitud.anio}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
+
+        {/* ===== MOBILE LAYOUT: title + price first ===== */}
+        <div className="lg:hidden space-y-5 mb-6">
+          <div>
+            <h1 className="font-display text-[28px] font-bold text-foreground leading-tight capitalize">
+              {solicitud.marca} {solicitud.modelo}
+            </h1>
+            <p className="mt-1 text-base text-muted-foreground">{solicitud.anio}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <DataPill icon={<Gauge className="h-3.5 w-3.5" />} text={`${solicitud.km?.toLocaleString("es-ES")} km`} />
             <DataPill icon={<MapPin className="h-3.5 w-3.5" />} text={solicitud.provincia} />
             <DataPill icon={<CarFront className="h-3.5 w-3.5" />} text={solicitud.tipo_vehiculo} />
-            <DataPill icon={<Calendar className="h-3.5 w-3.5" />} text={String(solicitud.anio)} />
           </div>
-          {/* Mobile price + CTA */}
-          <div className="mt-4 rounded-xl border border-border bg-white p-4">
-            {precio && (
+          {/* Mobile sticky price + CTA */}
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+            {precio ? (
               <p className="font-display text-3xl font-bold text-ocre">
-                {precio.toLocaleString("es-ES")} <span className="text-xl">€</span>
+                {precio.toLocaleString("es-ES")} <span className="text-lg">€</span>
               </p>
+            ) : (
+              <p className="font-display text-2xl font-bold text-ocre">Consultar precio</p>
             )}
-            <div className="mt-3">
+            <div className="mt-4 space-y-2.5">
               <VehiculoContactModal vendedor={vendedor} vehicleName={vehicleName} />
+              {showTransport && (
+                <TransportButton vendedor={vendedor} vehicleName={vehicleName} />
+              )}
             </div>
+          </div>
+          {/* Mobile sello */}
+          <div className="rounded-2xl border border-border bg-white p-5 text-center">
+            <div className="flex justify-center mb-3">
+              <SelloRodado size="lg" />
+            </div>
+            <p className="font-display text-sm font-semibold text-forest">Inspección verificada</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">por la red de talleres Rodado</p>
           </div>
         </div>
 
-        {/* Two-column layout */}
-        <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
-          {/* Left column - 65% */}
-          <div className="w-full lg:w-[65%] space-y-10">
-            {/* Gallery */}
-            <VehiculoGallery photos={photos} vehicleName={vehicleName} />
-
-            {/* Desktop Title */}
+        {/* ===== DESKTOP TWO-COLUMN LAYOUT ===== */}
+        <div className="flex flex-col gap-10 lg:flex-row">
+          {/* Left column — 62% */}
+          <div className="w-full lg:w-[62%] space-y-10">
+            {/* Title (desktop) */}
             <div className="hidden lg:block">
-              <h1 className="font-display text-4xl font-bold text-foreground leading-tight">
+              <h1 className="font-display text-4xl font-bold text-foreground leading-tight capitalize">
                 {solicitud.marca} {solicitud.modelo}
               </h1>
               <p className="mt-2 text-lg text-muted-foreground">{solicitud.anio}</p>
@@ -159,16 +245,18 @@ const VehiculoPublico = () => {
                 <DataPill icon={<Gauge className="h-3.5 w-3.5" />} text={`${solicitud.km?.toLocaleString("es-ES")} km`} />
                 <DataPill icon={<MapPin className="h-3.5 w-3.5" />} text={solicitud.provincia} />
                 <DataPill icon={<CarFront className="h-3.5 w-3.5" />} text={solicitud.tipo_vehiculo} />
-                <DataPill icon={<Calendar className="h-3.5 w-3.5" />} text={String(solicitud.anio)} />
               </div>
             </div>
 
+            {/* Gallery */}
+            <VehiculoGallery photos={photos} vehicleName={vehicleName} />
+
             {/* Description */}
-            {ficha.descripcion_generada && (
+            {description && (
               <div>
                 <h2 className="font-display text-2xl font-bold text-foreground">Descripción</h2>
-                <div className="mt-4 whitespace-pre-line text-foreground/85 leading-[1.8] text-[15px]">
-                  {ficha.descripcion_generada}
+                <div className="mt-4 whitespace-pre-line text-foreground/85 leading-[1.85] text-[15px]">
+                  {description}
                 </div>
               </div>
             )}
@@ -176,10 +264,13 @@ const VehiculoPublico = () => {
             {/* Equipment pills */}
             {equipmentPills.length > 0 && (
               <div>
-                <h2 className="font-display text-2xl font-bold text-foreground">Equipamiento y características</h2>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <h2 className="font-display text-2xl font-bold text-foreground">Equipamiento destacado</h2>
+                <div className="mt-4 flex flex-wrap gap-2.5">
                   {equipmentPills.map((pill: string, i: number) => (
-                    <span key={i} className="rounded-full bg-sand px-4 py-2 text-sm font-medium text-forest capitalize">
+                    <span
+                      key={i}
+                      className="rounded-[20px] bg-sand px-3.5 py-2 text-sm font-medium text-forest capitalize"
+                    >
                       {pill}
                     </span>
                   ))}
@@ -215,43 +306,42 @@ const VehiculoPublico = () => {
             <VehiculoInspeccion checklistItems={checklistItems} informe={informe} />
           </div>
 
-          {/* Right column - 35% sticky (desktop only) */}
-          <div className="hidden lg:block w-[35%]">
+          {/* Right column — 38% sticky (desktop only) */}
+          <div className="hidden lg:block w-[38%]">
             <div className="sticky top-20 space-y-6">
-              {/* Price card */}
+              {/* Card 1: Price + Contact */}
               <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
-                {precio && (
-                  <p className="font-display text-4xl font-bold text-ocre">
+                {precio ? (
+                  <p className="font-display text-[42px] font-bold text-ocre leading-none">
                     {precio.toLocaleString("es-ES")} <span className="text-2xl">€</span>
                   </p>
+                ) : (
+                  <p className="font-display text-3xl font-bold text-ocre">Consultar precio</p>
                 )}
-                {!precio && <p className="font-display text-2xl font-bold text-ocre">Consultar precio</p>}
 
                 <div className="mt-6 space-y-3">
                   <VehiculoContactModal vendedor={vendedor} vehicleName={vehicleName} />
                   {showTransport && (
-                    <Button variant="outline" size="lg" className="w-full" onClick={() => {
-                      const whatsappUrl = vendedor?.telefono
-                        ? `https://wa.me/34${vendedor.telefono.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola, me interesa el transporte a domicilio para el ${vehicleName} publicado en Rodado.`)}`
-                        : `mailto:${vendedor?.email}?subject=${encodeURIComponent(`Transporte a domicilio — ${vehicleName}`)}`;
-                      window.open(whatsappUrl, "_blank");
-                    }}>
-                      <Truck className="mr-2 h-4 w-4" /> Solicitar transporte
-                    </Button>
+                    <TransportButton vendedor={vendedor} vehicleName={vehicleName} />
                   )}
                 </div>
               </div>
 
-              {/* Trust badge */}
+              {/* Card 2: Sello Rodado */}
               <div className="rounded-2xl border border-border bg-white p-6 text-center">
-                <div className="mx-auto mb-4 flex justify-center">
-                  <SelloRodado size="lg" />
+                <div className="flex justify-center mb-4">
+                  <SelloRodado size="xl" />
                 </div>
-                <p className="font-display text-sm font-semibold text-foreground">Inspección verificada</p>
+                <p className="font-display text-sm font-bold text-forest">Inspección verificada</p>
                 <p className="mt-1 text-xs text-muted-foreground">por la red de talleres Rodado</p>
                 {informe?.created_at && (
                   <p className="mt-3 text-xs text-muted-foreground">
                     Fecha: {new Date(informe.created_at).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}
+                  </p>
+                )}
+                {tallerNombre && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Taller: {tallerNombre}
                   </p>
                 )}
               </div>
@@ -271,10 +361,27 @@ const VehiculoPublico = () => {
   );
 };
 
+// --- Sub-components ---
+
 const DataPill = ({ icon, text }: { icon: React.ReactNode; text: string }) => (
-  <span className="inline-flex items-center gap-1.5 rounded-full bg-sand px-3.5 py-1.5 text-sm font-medium text-forest">
+  <span className="inline-flex items-center gap-1.5 rounded-full bg-sand px-3.5 py-1.5 text-sm font-medium text-forest capitalize">
     {icon} {text}
   </span>
 );
+
+const TransportButton = ({ vendedor, vehicleName }: { vendedor: any; vehicleName: string }) => {
+  const handleClick = () => {
+    const phone = vendedor?.telefono?.replace(/\D/g, "");
+    const url = phone
+      ? `https://wa.me/34${phone}?text=${encodeURIComponent(`Hola, me interesa el transporte a domicilio para el ${vehicleName} publicado en Rodado.`)}`
+      : `mailto:${vendedor?.email}?subject=${encodeURIComponent(`Transporte a domicilio — ${vehicleName}`)}`;
+    window.open(url, "_blank");
+  };
+  return (
+    <Button variant="outline" size="lg" className="w-full" onClick={handleClick}>
+      <Truck className="mr-2 h-4 w-4" /> Solicitar transporte a domicilio
+    </Button>
+  );
+};
 
 export default VehiculoPublico;

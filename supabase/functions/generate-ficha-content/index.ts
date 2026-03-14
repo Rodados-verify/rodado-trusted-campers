@@ -45,70 +45,55 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Solicitud not found" }), { status: 404, headers: corsHeaders });
     }
 
-    const { data: checklist } = await supabase.from("checklist_items").select("*").eq("solicitud_id", solicitud_id);
     const { data: informe } = await supabase.from("informes").select("*").eq("solicitud_id", solicitud_id).maybeSingle();
-    const { data: vendedor } = await supabase.from("usuarios").select("nombre").eq("id", sol.vendedor_id).single();
 
-    // Build checklist summary
-    const secciones = ["Mecánica", "Carrocería", "Habitáculo", "Instalaciones", "Documentación"];
-    let checklistSummary = "";
-    for (const sec of secciones) {
-      const items = (checklist || []).filter((i: any) => i.seccion === sec);
-      if (items.length === 0) continue;
-      const correct = items.filter((i: any) => i.estado === "correcto").length;
-      const obs = items.filter((i: any) => i.estado === "con_observaciones");
-      checklistSummary += `\n${sec}: ${correct}/${items.length} correcto.`;
-      if (obs.length > 0) {
-        checklistSummary += ` Observaciones: ${obs.map((o: any) => `${o.item}: ${o.observacion}`).join("; ")}`;
-      }
-    }
+    // Build prompt with exact user-specified format
+    const prompt = `Eres un redactor especializado en venta de autocaravanas y campers de ocasión en España.
+Escribe una descripción de venta profesional, persuasiva y honesta de entre 200 y 280 palabras.
+Escribe en español. Habla del vehículo en tercera persona. Destaca los puntos fuertes.
+Menciona el equipamiento más relevante. Transmite confianza. No menciones precios.
+No uses lenguaje exagerado ni superlativos vacíos.
 
-    const prompt = `Eres un redactor especializado en venta de autocaravanas y vehículos camper de ocasión.
-Escribe una descripción de venta profesional, persuasiva y honesta para el siguiente vehículo.
-La descripción debe tener entre 200 y 300 palabras, estar en español, destacar los puntos fuertes
-del vehículo, mencionar el equipamiento más relevante y transmitir confianza al comprador.
-No menciones precios. No uses lenguaje exagerado. Escribe en tercera persona sobre el vehículo.
-Empieza directamente con la descripción, sin títulos.
+Vehículo: ${sol.marca} ${sol.modelo} ${sol.anio}
+Kilómetros: ${sol.km?.toLocaleString("es-ES")} km
+${sol.descripcion ? `Descripción del propietario: ${sol.descripcion}` : ""}
+${informe?.puntos_positivos ? `Puntos destacados por el inspector: ${informe.puntos_positivos}` : ""}
+${informe?.observaciones_generales ? `Observaciones técnicas: ${informe.observaciones_generales}` : ""}`;
 
-Datos del vehículo:
-- Marca y modelo: ${sol.marca} ${sol.modelo}
-- Año: ${sol.anio}
-- Kilómetros: ${sol.km?.toLocaleString("es-ES")} km
-- Tipo: ${sol.tipo_vehiculo}
-- Provincia: ${sol.provincia}
-${sol.descripcion ? `- Descripción del propietario: ${sol.descripcion}` : ""}
-${informe?.puntos_positivos ? `- Equipamiento destacado por el taller: ${informe.puntos_positivos}` : ""}
-${informe?.observaciones_generales ? `- Observaciones del taller: ${informe.observaciones_generales}` : ""}
-
-Resultado de inspección profesional:${checklistSummary}`;
-
-    // Call Lovable AI
+    // Call Lovable AI Gateway
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!lovableApiKey) {
-      return new Response(JSON.stringify({ error: "AI not configured" }), { status: 500, headers: corsHeaders });
+    let description = "Descripción pendiente de revisión";
+
+    if (lovableApiKey) {
+      try {
+        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${lovableApiKey}`,
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+          }),
+        });
+
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json();
+          const generated = aiData.choices?.[0]?.message?.content;
+          if (generated && generated.trim().length > 50) {
+            description = generated.trim();
+          }
+        } else {
+          console.error("AI error:", aiResponse.status, await aiResponse.text());
+        }
+      } catch (aiErr) {
+        console.error("AI call failed:", aiErr);
+      }
+    } else {
+      console.error("LOVABLE_API_KEY not configured");
     }
-
-    const aiResponse = await fetch("https://api.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${lovableApiKey}`,
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI error:", errText);
-      return new Response(JSON.stringify({ error: "AI generation failed" }), { status: 500, headers: corsHeaders });
-    }
-
-    const aiData = await aiResponse.json();
-    const description = aiData.choices?.[0]?.message?.content || "";
 
     // Copy original photos as processed if none exist
     const { data: existingProcessed } = await supabase.from("fotos_solicitud").select("id").eq("solicitud_id", solicitud_id).eq("tipo", "procesada");
@@ -124,7 +109,7 @@ Resultado de inspección profesional:${checklistSummary}`;
       }
     }
 
-    // Upsert ficha with generated description
+    // Upsert ficha
     const shortId = solicitud_id.substring(0, 4);
     const slug = `${sol.marca}-${sol.modelo}-${sol.anio}-${shortId}`
       .toLowerCase()

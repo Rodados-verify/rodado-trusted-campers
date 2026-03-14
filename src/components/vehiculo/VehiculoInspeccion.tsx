@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { CheckCircle, AlertCircle, Download } from "lucide-react";
+import { CheckCircle, AlertCircle, Download, AlertTriangle } from "lucide-react";
 
 interface ChecklistItem {
   id: string;
@@ -28,16 +28,25 @@ export const VehiculoInspeccion = ({ checklistItems, informe }: VehiculoInspecci
 
   const totalCorrect = checklistItems.filter(i => i.estado === "correcto").length;
   const totalItems = checklistItems.length;
-  const percentage = Math.round((totalCorrect / totalItems) * 100);
+  const withObservations = checklistItems.filter(i => i.estado === "con_observaciones").length;
+  const allCorrect = totalCorrect === totalItems;
 
   return (
     <div className="space-y-6">
+      {/* Header with badge */}
       <div className="flex items-center justify-between">
         <h2 className="font-display text-2xl font-bold text-foreground">Informe de inspección</h2>
-        <div className="flex items-center gap-2 rounded-full bg-green-50 px-4 py-2">
-          <CheckCircle className="h-4 w-4 text-green-600" />
-          <span className="text-sm font-semibold text-green-700">{percentage}% correcto</span>
-        </div>
+        {allCorrect ? (
+          <div className="flex items-center gap-2 rounded-full bg-green-50 px-4 py-2 border border-green-200">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <span className="text-sm font-semibold text-green-700">100% correcto</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-full bg-yellow-50 px-4 py-2 border border-yellow-200">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <span className="text-sm font-semibold text-yellow-700">{withObservations} punto{withObservations !== 1 ? "s" : ""} a revisar</span>
+          </div>
+        )}
       </div>
 
       {/* Section cards */}
@@ -46,11 +55,10 @@ export const VehiculoInspeccion = ({ checklistItems, informe }: VehiculoInspecci
           const items = checklistItems.filter(i => i.seccion === seccion);
           if (items.length === 0) return null;
           const correct = items.filter(i => i.estado === "correcto").length;
-          const withObs = items.filter(i => i.estado === "con_observaciones");
 
           return (
             <div key={seccion} className="rounded-xl border border-border bg-white p-5">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-4">
                 <h4 className="font-display text-base font-semibold text-foreground">{seccion}</h4>
                 <span className={cn(
                   "rounded-full px-3 py-1 text-xs font-semibold",
@@ -59,7 +67,7 @@ export const VehiculoInspeccion = ({ checklistItems, informe }: VehiculoInspecci
                   {correct}/{items.length}
                 </span>
               </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2.5 sm:grid-cols-2">
                 {items.map(item => (
                   <div key={item.id} className="flex items-start gap-2.5">
                     <span className={cn(
@@ -85,7 +93,7 @@ export const VehiculoInspeccion = ({ checklistItems, informe }: VehiculoInspecci
         <div className="rounded-xl border border-border bg-white p-5">
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
-            <h4 className="font-display text-base font-semibold">Observaciones generales</h4>
+            <h4 className="font-display text-base font-semibold text-foreground">Observaciones generales</h4>
           </div>
           <p className="text-sm leading-relaxed text-muted-foreground">{informe.observaciones_generales}</p>
         </div>
@@ -108,7 +116,7 @@ export const VehiculoInspeccion = ({ checklistItems, informe }: VehiculoInspecci
           href={informe.url_pdf}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/30"
+          className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/30"
         >
           <Download className="h-4 w-4" /> Descargar informe completo (PDF)
         </a>
