@@ -241,6 +241,7 @@ export type Database = {
           foto_panel_solar_url: string | null
           foto_trasera_url: string | null
           fotos_adicionales_urls: string[] | null
+          fotos_desperfectos_urls: string[] | null
           frenos_estado: string | null
           frenos_obs: string | null
           frigorifico_estado: string | null
@@ -370,6 +371,7 @@ export type Database = {
           foto_panel_solar_url?: string | null
           foto_trasera_url?: string | null
           fotos_adicionales_urls?: string[] | null
+          fotos_desperfectos_urls?: string[] | null
           frenos_estado?: string | null
           frenos_obs?: string | null
           frigorifico_estado?: string | null
@@ -499,6 +501,7 @@ export type Database = {
           foto_panel_solar_url?: string | null
           foto_trasera_url?: string | null
           fotos_adicionales_urls?: string[] | null
+          fotos_desperfectos_urls?: string[] | null
           frenos_estado?: string | null
           frenos_obs?: string | null
           frigorifico_estado?: string | null
