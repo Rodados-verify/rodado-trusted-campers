@@ -50,7 +50,7 @@ const VendedorFicha = () => {
 
   const shareWhatsApp = () => {
     if (fichaSlug) {
-      const url = `${window.location.origin}/ficha/${fichaSlug}`;
+      const url = `${window.location.origin}/vehiculo/${fichaSlug}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(`Echa un vistazo a mi camper verificado por Rodado: ${url}`)}`, "_blank");
     }
   };
