@@ -66,7 +66,7 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
     incluye_transporte: false,
   });
 
-  const totalSteps = 4;
+  const totalSteps = 3;
   const progress = (step / totalSteps) * 100;
 
   const updateField = <K extends keyof FormData>(key: K, value: FormData[K]) => {
@@ -95,7 +95,6 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
       case 1: return form.tipo_vehiculo && form.marca && form.modelo && form.anio && form.km > 0 && form.provincia;
       case 2: return true;
       case 3: return true;
-      case 4: return true;
       default: return false;
     }
   };
@@ -105,7 +104,6 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
     setSubmitting(true);
 
     try {
-      // Get usuario id
       const { data: usuario } = await supabase
         .from("usuarios")
         .select("id")
@@ -114,7 +112,6 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
 
       if (!usuario) throw new Error("Usuario no encontrado");
 
-      // Insert solicitud
       const { data: solicitud, error } = await supabase
         .from("solicitudes")
         .insert({
@@ -134,24 +131,14 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
 
       if (error) throw error;
 
-      // Upload photos
       for (const photo of photos) {
         const ext = photo.name.split(".").pop();
         const path = `${user.id}/${solicitud.id}/${crypto.randomUUID()}.${ext}`;
-
         const { error: uploadError } = await supabase.storage
           .from("solicitud-fotos")
           .upload(path, photo);
-
-        if (uploadError) {
-          console.error("Photo upload error:", uploadError);
-          continue;
-        }
-
-        const { data: urlData } = supabase.storage
-          .from("solicitud-fotos")
-          .getPublicUrl(path);
-
+        if (uploadError) { console.error("Photo upload error:", uploadError); continue; }
+        const { data: urlData } = supabase.storage.from("solicitud-fotos").getPublicUrl(path);
         await supabase.from("fotos_solicitud").insert({
           solicitud_id: solicitud.id,
           url: urlData.publicUrl,
@@ -174,17 +161,17 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
       <div className="mb-8">
         <div className="mb-2 flex items-center justify-between text-sm text-muted-foreground">
           <span>Paso {step} de {totalSteps}</span>
-          <span>{["El vehículo", "Cuéntanos más", "Tus fotos", "Confirmar"][step - 1]}</span>
+          <span>{["Tu vehículo", "Tus fotos", "Confirmar"][step - 1]}</span>
         </div>
         <Progress value={progress} className="h-2" />
       </div>
 
-      {/* Step 1 - Vehicle */}
+      {/* Step 1 - Everything basic */}
       {step === 1 && (
         <div className="space-y-6">
           <div>
             <h2 className="font-display text-2xl font-bold text-foreground">¿Qué vehículo quieres vender?</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Cuéntanos los datos básicos de tu vehículo</p>
+            <p className="mt-1 text-sm text-muted-foreground">Solo los datos básicos. Nuestro verificador se encarga del resto.</p>
           </div>
 
           <div>
@@ -255,26 +242,20 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
             <Label htmlFor="precio">Precio de venta deseado (€)</Label>
             <Input id="precio" type="number" placeholder="Ej. 45000" value={form.precio_venta ?? ""} onChange={(e) => updateField("precio_venta", e.target.value ? Number(e.target.value) : null)} className="mt-1.5 bg-white" />
           </div>
-        </div>
-      )}
-
-      {/* Step 2 - Description */}
-      {step === 2 && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="font-display text-2xl font-bold text-foreground">Cuéntanos más sobre tu vehículo</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Cualquier detalle nos ayuda a preparar una mejor presentación</p>
-          </div>
 
           <div>
-            <Label htmlFor="descripcion">Descripción</Label>
+            <Label htmlFor="motivo">Motivo de venta</Label>
             <Textarea
-              id="descripcion"
-              placeholder="Estado general, equipamiento destacado, motivo de venta, historial de mantenimiento..."
+              id="motivo"
+              placeholder="¿Por qué vendes? Ej. Cambio a modelo más grande, poco uso..."
               value={form.descripcion}
-              onChange={(e) => updateField("descripcion", e.target.value)}
-              className="mt-1.5 min-h-[180px] bg-white"
+              onChange={(e) => {
+                if (e.target.value.length <= 300) updateField("descripcion", e.target.value);
+              }}
+              className="mt-1.5 min-h-[80px] bg-white"
+              maxLength={300}
             />
+            <p className="mt-1 text-xs text-muted-foreground text-right">{form.descripcion.length}/300</p>
           </div>
 
           <div className="flex items-start gap-3 rounded-xl border border-border bg-white p-4">
@@ -295,7 +276,7 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
                     <Info className="h-4 w-4 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[260px]">
-                    <p>Si el comprador es de otra ciudad, nos encargamos de entregar el vehículo en su domicilio. Te informaremos del coste adicional.</p>
+                    <p>Si el comprador es de otra ciudad, nos encargamos de entregar el vehículo en su domicilio.</p>
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -305,13 +286,13 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
         </div>
       )}
 
-      {/* Step 3 - Photos */}
-      {step === 3 && (
+      {/* Step 2 - Photos */}
+      {step === 2 && (
         <div className="space-y-6">
           <div>
-            <h2 className="font-display text-2xl font-bold text-foreground">Sube las fotos de tu vehículo</h2>
+            <h2 className="font-display text-2xl font-bold text-foreground">Sube las fotos que tengas</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Sube las fotos que tengas. No hace falta que sean perfectas, nos encargamos de presentarlas bien.
+              No hace falta que sean perfectas. Nuestro verificador hará las fotos profesionales durante la inspección.
             </p>
           </div>
 
@@ -354,8 +335,8 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
         </div>
       )}
 
-      {/* Step 4 - Confirmation */}
-      {step === 4 && (
+      {/* Step 3 - Confirmation */}
+      {step === 3 && (
         <div className="space-y-6">
           <div>
             <h2 className="font-display text-2xl font-bold text-foreground">Revisa tu solicitud</h2>
@@ -389,7 +370,7 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
             </div>
             {form.descripcion && (
               <div className="border-t border-border pt-3">
-                <p className="text-sm text-muted-foreground">Descripción</p>
+                <p className="text-sm text-muted-foreground">Motivo de venta</p>
                 <p className="mt-1 text-sm">{form.descripcion}</p>
               </div>
             )}
