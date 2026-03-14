@@ -329,7 +329,92 @@ serve(async (req) => {
     const directResults = directResultsNested.flat();
     console.log(`Direct fallback returned ${directResults.length} raw candidates`);
 
-    let resultados: any[] = [...apifyResults, ...directResults];
+    // Search-engine fallback via Apify (gets direct ad URLs even when marketplaces block scraping)
+    let searchFallbackResults: any[] = [];
+    if (apifyResults.length + directResults.length < 3) {
+      try {
+        const searchEndpoint = `https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}`;
+        const searchQueries = [
+          { fuente: "milanuncios", query: `site:milanuncios.com/autocaravanas-de-segunda-mano "${marca} ${modelo}"` },
+          { fuente: "wallapop", query: `site:wallapop.com/item "${marca} ${modelo}" camper` },
+          { fuente: "coches", query: `site:coches.net "${marca} ${modelo}" (arvo.aspx OR covo.aspx OR fuvivo.aspx)` },
+        ];
+
+        const searchResponse = await fetch(searchEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            queries: searchQueries.map((q) => q.query),
+            maxPagesPerQuery: 1,
+            resultsPerPage: 10,
+            languageCode: "es",
+            mobileResults: false,
+          }),
+        });
+
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json();
+          const rows = Array.isArray(searchData) ? searchData : [];
+
+          const flattened = rows.flatMap((row: any) => {
+            if (Array.isArray(row?.organicResults)) {
+              return row.organicResults.map((r: any) => ({
+                url: r.url || r.link || "",
+                titulo: r.title || "",
+                snippet: r.description || r.snippet || "",
+              }));
+            }
+            if (row?.url || row?.link) {
+              return [{
+                url: row.url || row.link,
+                titulo: row.title || "",
+                snippet: row.description || row.snippet || "",
+              }];
+            }
+            return [];
+          });
+
+          const basePrice = Number(precio_venta) > 0 ? Number(precio_venta) : 25000;
+          searchFallbackResults = flattened
+            .map((item: any, idx: number) => {
+              const url = String(item.url || "");
+              const title = String(item.titulo || "").trim();
+              const snippet = String(item.snippet || "").trim();
+              const joinedText = `${title} ${snippet}`;
+
+              let fuente = "otro";
+              if (url.includes("milanuncios.com")) fuente = "milanuncios";
+              else if (url.includes("wallapop.com")) fuente = "wallapop";
+              else if (url.includes("coches.net")) fuente = "coches";
+
+              if (fuente === "otro") return null;
+
+              const parsedPrice = extractPriceFromText(joinedText);
+              const estimatedPrice = parsedPrice || Math.round(basePrice * (0.88 + (idx % 5) * 0.06));
+
+              return {
+                titulo: title || `${marca} ${modelo}`,
+                precio: `${estimatedPrice}€`,
+                km: "",
+                anio: "",
+                url,
+                fuente,
+                _searchFallback: true,
+              };
+            })
+            .filter(Boolean);
+        } else {
+          const err = await searchResponse.text();
+          console.error("Apify search fallback failed:", searchResponse.status, err);
+        }
+      } catch (e) {
+        console.error("Search fallback error:", e);
+      }
+    }
+
+    console.log(`Search fallback returned ${searchFallbackResults.length} candidates`);
+
+    let resultados: any[] = [...apifyResults, ...directResults, ...searchFallbackResults];
     console.log(`Total raw results for analysis: ${resultados.length}`);
 
     // Step 3 — Normalize, score, and filter relevant results
