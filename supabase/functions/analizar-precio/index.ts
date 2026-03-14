@@ -275,12 +275,21 @@ serve(async (req) => {
       console.error("Search discovery error:", err);
     }
 
+    // Log all discovered URLs for debugging
+    const rejectedUrls: string[] = [];
     const directListingUrls = discoveredUrls
       .map((u) => String(u || "").trim())
       .filter((u) => {
         const fuente = detectFuenteFromUrl(u);
-        return fuente ? isDirectListingUrl(u, fuente) : false;
+        if (!fuente) return false;
+        const isListing = isDirectListingUrl(u, fuente);
+        if (!isListing) rejectedUrls.push(`[${fuente}] ${u}`);
+        return isListing;
       });
+    
+    if (rejectedUrls.length > 0) {
+      console.log("Rejected URLs (not matching listing pattern):", rejectedUrls.slice(0, 10).join("\n"))
+    }
 
     const uniqueListingUrls = [...new Set(directListingUrls)].slice(0, 24);
     console.log(`Discovered ${uniqueListingUrls.length} direct listing URLs`);
