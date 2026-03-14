@@ -194,38 +194,75 @@ serve(async (req) => {
 
     console.log(`Apify returned ${resultados.length} raw results`);
 
-    // Step 3 — Filter relevant results (relaxed criteria)
-    // First pass: extract numeric price from all results
-    const parsedResults = resultados.map((v: any) => ({
-      ...v,
-      _precioNum: parseInt(String(v.precio).replace(/\D/g, "")) || 0,
-      _kmNum: parseInt(String(v.km).replace(/[.\s]/g, "").replace(/\D/g, "")) || 0,
-      _anioNum: parseInt(String(v.anio).match(/\d{4}/)?.[0] || "0") || 0,
-    }));
+    // Step 3 — Filter relevant results (more tolerant)
+    const extractPriceNumberServer = (value: unknown): number => {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      if (!text) return 0;
 
-    // Relaxed filter: only require a valid price in reasonable range
-    let vehiculosFiltrados = parsedResults
-      .filter((v: any) => {
-        return (
-          v._precioNum >= 3000 &&
-          v._precioNum <= 300000 &&
-          // If year is detected, allow wide range (±5 years); otherwise keep it
-          (v._anioNum === 0 || Math.abs(v._anioNum - anio) <= 5) &&
-          // If km is detected, allow generous range; otherwise keep it
-          (v._kmNum === 0 || v._kmNum < (km || 500000) * 3)
-        );
+      const toNum = (raw: string) => parseInt(raw.replace(/[.,\s]/g, "").replace(/\D/g, ""), 10);
+
+      const euroMatches = [...text.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)\b/gi)]
+        .map((m) => toNum(m[1]))
+        .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+      if (euroMatches.length > 0) return euroMatches[0];
+
+      const generic = [...text.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})/g)]
+        .map((m) => toNum(m[1]))
+        .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000 && !(n >= 1900 && n <= 2035));
+
+      return generic[0] || 0;
+    };
+
+    const normalizeFuente = (fuente: unknown): string => {
+      const f = String(fuente || "").toLowerCase();
+      if (f.includes("wallapop")) return "wallapop";
+      if (f.includes("milanuncios")) return "milanuncios";
+      if (f.includes("coches")) return "coches";
+      return f || "otro";
+    };
+
+    const parsedResults = resultados
+      .map((v: any) => {
+        const precioFromFields = extractPriceNumberServer(v.precio) || extractPriceNumberServer(v.titulo);
+        const kmNum = parseInt(String(v.km || "").replace(/[.\s]/g, "").replace(/\D/g, ""), 10) || 0;
+        const anioNum = parseInt(String(v.anio || "").match(/\d{4}/)?.[0] || "0", 10) || 0;
+
+        return {
+          ...v,
+          fuente: normalizeFuente(v.fuente),
+          _precioNum: precioFromFields,
+          _kmNum: kmNum,
+          _anioNum: anioNum,
+        };
       })
+      .filter((v: any) => v._precioNum > 0);
+
+    // dedupe by source + price + title
+    const seen = new Set<string>();
+    const dedupedResults = parsedResults.filter((v: any) => {
+      const key = `${v.fuente}|${v._precioNum}|${String(v.titulo || "").slice(0, 60).toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    let vehiculosFiltrados = dedupedResults
+      .filter((v: any) =>
+        v._precioNum >= 3000 &&
+        v._precioNum <= 300000 &&
+        (v._anioNum === 0 || Math.abs(v._anioNum - anio) <= 8) &&
+        (v._kmNum === 0 || v._kmNum < (km || 500000) * 4)
+      )
       .slice(0, 20);
 
-    console.log(`Filtered to ${vehiculosFiltrados.length} comparable vehicles`);
+    console.log(`Apify parsed ${parsedResults.length} with price; strict filter -> ${vehiculosFiltrados.length}`);
 
-    // If still not enough, use ALL results with valid prices as fallback
     if (vehiculosFiltrados.length < 3) {
-      console.log("Not enough after filtering, using all results with valid prices...");
-      vehiculosFiltrados = parsedResults
+      console.log("Not enough with strict filter, using relaxed price-only filter...");
+      vehiculosFiltrados = dedupedResults
         .filter((v: any) => v._precioNum >= 3000 && v._precioNum <= 300000)
         .slice(0, 20);
-      console.log(`Fallback: ${vehiculosFiltrados.length} vehicles with valid prices`);
+      console.log(`Relaxed filter -> ${vehiculosFiltrados.length}`);
     }
 
     console.log(`Filtered to ${vehiculosFiltrados.length} comparable vehicles`);
