@@ -48,7 +48,7 @@ export const HeroSection = () => (
 
           <div className="mt-10">
             <Button variant="ocre" size="xl" asChild>
-              <Link to="/registro/vendedor">Solicitar mi pack — 349 €</Link>
+              <Link to="/registro/vendedor">Solicitar mi pack — 499 €</Link>
             </Button>
             <p className="mt-3 text-xs text-muted-foreground font-body">
               Pago próximamente disponible online — escríbenos para reservar
