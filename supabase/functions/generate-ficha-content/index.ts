@@ -46,19 +46,78 @@ Deno.serve(async (req) => {
     }
 
     const { data: informe } = await supabase.from("informes").select("*").eq("solicitud_id", solicitud_id).maybeSingle();
+    const { data: inspeccion } = await supabase.from("inspeccion_detalle").select("*").eq("solicitud_id", solicitud_id).maybeSingle();
 
-    // Build prompt with exact user-specified format
+    // Build comprehensive prompt
+    let vehicleDetails = `Vehículo: ${sol.marca} ${sol.modelo} ${sol.anio}
+Kilómetros: ${sol.km?.toLocaleString("es-ES")} km
+Tipo: ${sol.tipo_vehiculo}
+Provincia: ${sol.provincia}`;
+
+    if (sol.descripcion) {
+      vehicleDetails += `\nMotivo de venta del propietario: ${sol.descripcion}`;
+    }
+
+    // Add technical data from inspection
+    if (inspeccion) {
+      const techParts: string[] = [];
+      if (inspeccion.combustible) techParts.push(`Combustible: ${inspeccion.combustible}`);
+      if (inspeccion.potencia_cv) techParts.push(`Potencia: ${inspeccion.potencia_cv} CV`);
+      if (inspeccion.cilindrada) techParts.push(`Cilindrada: ${inspeccion.cilindrada} cc`);
+      if (inspeccion.transmision) techParts.push(`Transmisión: ${inspeccion.transmision}`);
+      if (inspeccion.traccion) techParts.push(`Tracción: ${inspeccion.traccion}`);
+      if (inspeccion.plazas) techParts.push(`Plazas: ${inspeccion.plazas}`);
+      if (inspeccion.longitud_mm) techParts.push(`Longitud: ${(inspeccion.longitud_mm / 1000).toFixed(2)} m`);
+      if (inspeccion.mma_kg) techParts.push(`MMA: ${inspeccion.mma_kg} kg`);
+      if (techParts.length > 0) vehicleDetails += `\n\nDatos técnicos verificados:\n${techParts.join(", ")}`;
+
+      // Habitáculo
+      const habitParts: string[] = [];
+      if (inspeccion.cama_fija) habitParts.push("cama fija");
+      if (inspeccion.dinette) habitParts.push("dinette");
+      if (inspeccion.cocina_fuegos > 0) habitParts.push(`cocina ${inspeccion.cocina_fuegos} fuegos`);
+      if (inspeccion.cocina_horno) habitParts.push("horno");
+      if (inspeccion.frigorifico_tipo && inspeccion.frigorifico_tipo !== "no_tiene") habitParts.push(`frigorífico ${inspeccion.frigorifico_tipo}`);
+      if (inspeccion.banio_completo) habitParts.push("baño completo");
+      if (inspeccion.ducha_separada) habitParts.push("ducha separada");
+      if (inspeccion.ac_tiene) habitParts.push("aire acondicionado");
+      if (inspeccion.calefaccion_marca) habitParts.push(`calefacción ${inspeccion.calefaccion_marca}`);
+      if (inspeccion.panel_solar_tiene) habitParts.push(`panel solar${inspeccion.panel_solar_w ? ` ${inspeccion.panel_solar_w}W` : ""}`);
+      if (inspeccion.toldo_tiene) habitParts.push("toldo");
+      if (inspeccion.inversor_tiene) habitParts.push("inversor");
+      if (inspeccion.bateria_servicio_tipo) habitParts.push(`batería ${inspeccion.bateria_servicio_tipo}${inspeccion.bateria_servicio_ah ? ` ${inspeccion.bateria_servicio_ah}Ah` : ""}`);
+      if (inspeccion.agua_deposito_limpia_l) habitParts.push(`depósito agua ${inspeccion.agua_deposito_limpia_l}L`);
+      if (habitParts.length > 0) vehicleDetails += `\n\nEquipamiento del habitáculo: ${habitParts.join(", ")}`;
+
+      // Extras
+      if (inspeccion.extras_verificados?.length > 0) {
+        vehicleDetails += `\n\nExtras verificados: ${inspeccion.extras_verificados.join(", ")}`;
+      }
+
+      // Valoración
+      if (inspeccion.puntuacion_general) {
+        vehicleDetails += `\n\nPuntuación del verificador: ${inspeccion.puntuacion_general}/10 — ${inspeccion.recomendacion?.replace(/_/g, " ")}`;
+      }
+      if (inspeccion.puntos_destacados) {
+        vehicleDetails += `\nPuntos destacados por el inspector: ${inspeccion.puntos_destacados}`;
+      }
+      if (inspeccion.observaciones_generales) {
+        vehicleDetails += `\nObservaciones técnicas: ${inspeccion.observaciones_generales}`;
+      }
+    } else {
+      // Fallback to informe data
+      if (informe?.puntos_positivos) vehicleDetails += `\nPuntos destacados por el inspector: ${informe.puntos_positivos}`;
+      if (informe?.observaciones_generales) vehicleDetails += `\nObservaciones técnicas: ${informe.observaciones_generales}`;
+    }
+
     const prompt = `Eres un redactor especializado en venta de autocaravanas y campers de ocasión en España.
 Escribe una descripción de venta profesional, persuasiva y honesta de entre 200 y 280 palabras.
 Escribe en español. Habla del vehículo en tercera persona. Destaca los puntos fuertes.
-Menciona el equipamiento más relevante. Transmite confianza. No menciones precios.
+Menciona el equipamiento más relevante del habitáculo y las instalaciones.
+Transmite confianza mencionando la inspección profesional. No menciones precios.
 No uses lenguaje exagerado ni superlativos vacíos.
 
-Vehículo: ${sol.marca} ${sol.modelo} ${sol.anio}
-Kilómetros: ${sol.km?.toLocaleString("es-ES")} km
-${sol.descripcion ? `Descripción del propietario: ${sol.descripcion}` : ""}
-${informe?.puntos_positivos ? `Puntos destacados por el inspector: ${informe.puntos_positivos}` : ""}
-${informe?.observaciones_generales ? `Observaciones técnicas: ${informe.observaciones_generales}` : ""}`;
+${vehicleDetails}`;
 
     // Call Lovable AI Gateway
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
@@ -95,7 +154,7 @@ ${informe?.observaciones_generales ? `Observaciones técnicas: ${informe.observa
       console.error("LOVABLE_API_KEY not configured");
     }
 
-    // Copy original photos as processed if none exist
+    // Copy protocol photos as processed if none exist
     const { data: existingProcessed } = await supabase.from("fotos_solicitud").select("id").eq("solicitud_id", solicitud_id).eq("tipo", "procesada");
     if (!existingProcessed || existingProcessed.length === 0) {
       const { data: originals } = await supabase.from("fotos_solicitud").select("*").eq("solicitud_id", solicitud_id).eq("tipo", "original");

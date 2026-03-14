@@ -19,22 +19,99 @@ interface Informe {
 interface VehiculoInspeccionProps {
   checklistItems: ChecklistItem[];
   informe: Informe | null;
+  inspeccion?: any;
 }
 
-const SECCIONES = ["Mecánica", "Carrocería", "Habitáculo", "Instalaciones", "Documentación"];
+// Build checklist from inspeccion_detalle estado fields
+const INSPECCION_SECTIONS: { section: string; items: { key: string; label: string }[] }[] = [
+  {
+    section: "Mecánica",
+    items: [
+      { key: "motor", label: "Motor" },
+      { key: "transmision_mec", label: "Transmisión" },
+      { key: "frenos", label: "Frenos" },
+      { key: "suspension", label: "Suspensión" },
+      { key: "direccion", label: "Dirección" },
+      { key: "neumaticos", label: "Neumáticos" },
+      { key: "escape", label: "Escape" },
+      { key: "bateria_arranque", label: "Batería de arranque" },
+      { key: "niveles", label: "Niveles" },
+    ],
+  },
+  {
+    section: "Carrocería",
+    items: [
+      { key: "carroceria", label: "Estado general" },
+      { key: "golpes", label: "Golpes / abolladuras" },
+      { key: "repintados", label: "Repintados" },
+      { key: "oxidacion", label: "Oxidación" },
+      { key: "sellados", label: "Sellados y juntas" },
+      { key: "bajos", label: "Bajos" },
+      { key: "cristales", label: "Cristales" },
+    ],
+  },
+  {
+    section: "Habitáculo",
+    items: [
+      { key: "habitaculo", label: "Estado general" },
+      { key: "humedades", label: "Humedades" },
+      { key: "tapiceria", label: "Tapicería" },
+      { key: "persianas", label: "Persianas" },
+      { key: "iluminacion", label: "Iluminación" },
+    ],
+  },
+  {
+    section: "Instalaciones",
+    items: [
+      { key: "electrica", label: "Instalación eléctrica" },
+      { key: "toma_220v", label: "Toma 220V" },
+      { key: "gas", label: "Instalación de gas" },
+      { key: "agua", label: "Instalación de agua" },
+    ],
+  },
+];
 
-export const VehiculoInspeccion = ({ checklistItems, informe }: VehiculoInspeccionProps) => {
-  if (checklistItems.length === 0) return null;
+const SECCIONES_LEGACY = ["Mecánica", "Carrocería", "Habitáculo", "Instalaciones", "Documentación"];
 
-  const totalCorrect = checklistItems.filter(i => i.estado === "correcto").length;
-  const totalItems = checklistItems.length;
-  const withObservations = checklistItems.filter(i => i.estado === "con_observaciones").length;
+export const VehiculoInspeccion = ({ checklistItems, informe, inspeccion }: VehiculoInspeccionProps) => {
+  // Use inspeccion_detalle if available, otherwise fall back to legacy checklist_items
+  const useNewFormat = !!inspeccion;
+
+  // Build items from new format
+  const newItems: { seccion: string; item: string; estado: string; observacion: string | null; id: string }[] = [];
+  if (useNewFormat) {
+    INSPECCION_SECTIONS.forEach(section => {
+      section.items.forEach(item => {
+        const estado = inspeccion[`${item.key}_estado`];
+        if (estado) {
+          newItems.push({
+            seccion: section.section,
+            item: item.label,
+            estado,
+            observacion: inspeccion[`${item.key}_obs`] || null,
+            id: item.key,
+          });
+        }
+      });
+    });
+  }
+
+  const displayItems = useNewFormat ? newItems : checklistItems;
+  const sections = useNewFormat ? INSPECCION_SECTIONS.map(s => s.section) : SECCIONES_LEGACY;
+  const obsGenerales = useNewFormat ? inspeccion?.observaciones_generales : informe?.observaciones_generales;
+  const puntosPos = useNewFormat ? inspeccion?.puntos_destacados : informe?.puntos_positivos;
+
+  if (displayItems.length === 0) return null;
+
+  const totalCorrect = displayItems.filter(i => i.estado === "correcto").length;
+  const totalItems = displayItems.length;
+  const withObservations = displayItems.filter(i => i.estado === "con_observaciones").length;
   const allCorrect = totalCorrect === totalItems;
 
   return (
     <div className="space-y-6">
-      {/* Header with badge */}
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="font-display text-2xl font-bold text-foreground">Informe de inspección</h2>
         {allCorrect ? (
           <div className="flex items-center gap-2 rounded-full bg-green-50 px-4 py-2 border border-green-200">
@@ -51,8 +128,8 @@ export const VehiculoInspeccion = ({ checklistItems, informe }: VehiculoInspecci
 
       {/* Section cards */}
       <div className="space-y-3">
-        {SECCIONES.map(seccion => {
-          const items = checklistItems.filter(i => i.seccion === seccion);
+        {sections.map(seccion => {
+          const items = displayItems.filter(i => i.seccion === seccion);
           if (items.length === 0) return null;
           const correct = items.filter(i => i.estado === "correcto").length;
 
@@ -89,35 +166,31 @@ export const VehiculoInspeccion = ({ checklistItems, informe }: VehiculoInspecci
       </div>
 
       {/* Observaciones generales */}
-      {informe?.observaciones_generales && (
+      {obsGenerales && (
         <div className="rounded-xl border border-border bg-white p-5">
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
             <h4 className="font-display text-base font-semibold text-foreground">Observaciones generales</h4>
           </div>
-          <p className="text-sm leading-relaxed text-muted-foreground">{informe.observaciones_generales}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">{obsGenerales}</p>
         </div>
       )}
 
       {/* Puntos positivos */}
-      {informe?.puntos_positivos && (
+      {puntosPos && (
         <div className="rounded-xl border border-green-200 bg-green-50/50 p-5">
           <div className="flex items-center gap-2 mb-3">
             <CheckCircle className="h-4 w-4 text-green-600" />
             <h4 className="font-display text-base font-semibold text-green-800">Puntos destacados</h4>
           </div>
-          <p className="text-sm leading-relaxed text-green-700">{informe.puntos_positivos}</p>
+          <p className="text-sm leading-relaxed text-green-700">{puntosPos}</p>
         </div>
       )}
 
       {/* PDF download */}
       {informe?.url_pdf && (
-        <a
-          href={informe.url_pdf}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/30"
-        >
+        <a href={informe.url_pdf} target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/30">
           <Download className="h-4 w-4" /> Descargar informe completo (PDF)
         </a>
       )}
