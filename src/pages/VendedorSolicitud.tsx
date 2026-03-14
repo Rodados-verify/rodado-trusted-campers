@@ -84,7 +84,7 @@ const VendedorSolicitud = () => {
 
   const copyLink = () => {
     if (fichaSlug) {
-      navigator.clipboard.writeText(`${window.location.origin}/ficha/${fichaSlug}`);
+      navigator.clipboard.writeText(`${window.location.origin}/vehiculo/${fichaSlug}`);
       toast({ title: "Enlace copiado" });
     }
   };
