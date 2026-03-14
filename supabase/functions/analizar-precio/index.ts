@@ -160,6 +160,14 @@ serve(async (req) => {
       }
     }
 
+    let resultados: any[] = [];
+    if (apifyResponse.ok) {
+      resultados = await apifyResponse.json();
+      if (Array.isArray(resultados) && resultados.length > 0 && Array.isArray(resultados[0])) {
+        resultados = resultados.flat();
+      }
+    }
+
     console.log(`Apify returned ${resultados.length} raw results`);
 
     // Step 3 — Filter relevant results (relaxed criteria)
