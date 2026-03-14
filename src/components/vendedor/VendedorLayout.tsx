@@ -1,21 +1,48 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { FileText, Globe, User, LogOut, TrendingUp } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { FileText, Globe, User, LogOut, TrendingUp, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const navItems = [
+const baseNavItems = [
   { label: "Mi solicitud", path: "/vendedor", icon: FileText },
   { label: "Mi ficha", path: "/vendedor/ficha", icon: Globe },
   { label: "Analizar precio", path: "/vendedor/precio", icon: TrendingUp },
   { label: "Mi cuenta", path: "/vendedor/cuenta", icon: User },
 ];
 
+const kitNavItem = { label: "Publicar anuncio", path: "/vendedor/kit", icon: Megaphone, badge: true };
+
 const VendedorLayout = ({ children }: { children: ReactNode }) => {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const isMobile = useIsMobile();
+  const [isPublicado, setIsPublicado] = useState(false);
+
+  useEffect(() => {
+    const check = async () => {
+      if (!user) return;
+      const { data: usuario } = await supabase
+        .from("usuarios")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+      if (!usuario) return;
+      const { data: sol } = await supabase
+        .from("solicitudes")
+        .select("estado")
+        .eq("vendedor_id", usuario.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setIsPublicado(sol?.estado === "publicado");
+    };
+    check();
+  }, [user]);
+
+  const navItems = isPublicado ? [...baseNavItems.slice(0, 3), kitNavItem, baseNavItems[3]] : baseNavItems;
 
   const isActive = (path: string) => {
     if (path === "/vendedor") return location.pathname === "/vendedor";
@@ -87,6 +114,9 @@ const VendedorLayout = ({ children }: { children: ReactNode }) => {
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
+                {"badge" in item && (item as any).badge && (
+                  <span className="ml-auto h-2 w-2 rounded-full bg-green-400" />
+                )}
               </Link>
             );
           })}

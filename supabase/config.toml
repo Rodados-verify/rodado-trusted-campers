@@ -8,3 +8,12 @@ verify_jwt = false
 
 [functions.analizar-precio]
 verify_jwt = false
+
+[functions.procesar-foto]
+verify_jwt = false
+
+[functions.generar-zip-fotos]
+verify_jwt = false
+
+[functions.generar-kit-publicacion]
+verify_jwt = false

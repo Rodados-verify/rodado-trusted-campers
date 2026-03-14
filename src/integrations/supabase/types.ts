@@ -630,6 +630,53 @@ export type Database = {
           },
         ]
       }
+      kit_publicacion: {
+        Row: {
+          cochesnet_descripcion: string | null
+          cochesnet_titulo: string | null
+          created_at: string | null
+          id: string
+          milanuncios_descripcion: string | null
+          milanuncios_titulo: string | null
+          solicitud_id: string
+          wallapop_descripcion: string | null
+          wallapop_titulo: string | null
+          whatsapp_texto: string | null
+        }
+        Insert: {
+          cochesnet_descripcion?: string | null
+          cochesnet_titulo?: string | null
+          created_at?: string | null
+          id?: string
+          milanuncios_descripcion?: string | null
+          milanuncios_titulo?: string | null
+          solicitud_id: string
+          wallapop_descripcion?: string | null
+          wallapop_titulo?: string | null
+          whatsapp_texto?: string | null
+        }
+        Update: {
+          cochesnet_descripcion?: string | null
+          cochesnet_titulo?: string | null
+          created_at?: string | null
+          id?: string
+          milanuncios_descripcion?: string | null
+          milanuncios_titulo?: string | null
+          solicitud_id?: string
+          wallapop_descripcion?: string | null
+          wallapop_titulo?: string | null
+          whatsapp_texto?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kit_publicacion_solicitud_id_fkey"
+            columns: ["solicitud_id"]
+            isOneToOne: false
+            referencedRelation: "solicitudes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           created_at: string

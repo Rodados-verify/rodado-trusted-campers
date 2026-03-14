@@ -144,6 +144,10 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
           url: urlData.publicUrl,
           tipo: "original",
         });
+        // Apply watermark asynchronously (non-blocking)
+        supabase.functions.invoke("procesar-foto", {
+          body: { foto_url: urlData.publicUrl, solicitud_id: solicitud.id },
+        }).catch((e: any) => console.error("Watermark error:", e));
       }
 
       toast({ title: "¡Solicitud enviada!", description: "Nos pondremos en contacto contigo en 24 horas." });

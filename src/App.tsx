@@ -14,6 +14,7 @@ import VendedorDashboard from "./pages/VendedorDashboard";
 import VendedorFichaPage from "./pages/VendedorFichaPage";
 import VendedorCuentaPage from "./pages/VendedorCuentaPage";
 import VendedorAnalisisPrecioPage from "./pages/VendedorAnalisisPrecioPage";
+import VendedorKitPublicacionPage from "./pages/VendedorKitPublicacionPage";
 import TallerDashboard from "./pages/TallerDashboard";
 import TallerPendiente from "./pages/TallerPendiente";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -55,6 +56,7 @@ const App = () => (
             <Route path="/vendedor/ficha" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorFichaPage /></ProtectedRoute>} />
             <Route path="/vendedor/precio" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorAnalisisPrecioPage /></ProtectedRoute>} />
             <Route path="/vendedor/cuenta" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorCuentaPage /></ProtectedRoute>} />
+            <Route path="/vendedor/kit" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorKitPublicacionPage /></ProtectedRoute>} />
 
             {/* Taller */}
             <Route path="/taller" element={<ProtectedRoute allowedRoles={["taller"]}><TallerDashboard /></ProtectedRoute>} />
