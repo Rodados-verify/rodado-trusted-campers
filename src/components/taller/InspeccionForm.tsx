@@ -152,6 +152,7 @@ const DEFAULT_DATA: InspeccionData = {
   calefaccion_webasto_tiene: false, calefaccion_webasto_modelo: "",
   toldo_tiene: false, toldo_tipo: "", toldo_estado: "",
   extras_verificados: [],
+  fotos_desperfectos_urls: [],
   itv_fecha_caducidad: "", historial_mantenimiento: "no_disponible",
   num_propietarios: null, cargas_embargos: false,
   puntuacion_general: 7, recomendacion: "recomendado",
