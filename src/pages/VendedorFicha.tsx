@@ -79,7 +79,11 @@ const VendedorFicha = () => {
       a.remove();
       URL.revokeObjectURL(blobUrl);
     } catch {
-      window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      toast({
+        title: "No se pudo descargar el informe",
+        description: "Inténtalo de nuevo en unos segundos.",
+        variant: "destructive",
+      });
     } finally {
       setDownloadingPdf(false);
     }
