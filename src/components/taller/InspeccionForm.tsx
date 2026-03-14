@@ -330,8 +330,11 @@ const InspeccionForm = ({ solicitudId, tallerId, onComplete }: InspeccionFormPro
       await supabase.from("fotos_solicitud").insert({
         solicitud_id: solicitudId,
         url: urlData.publicUrl,
-        tipo: "procesada" as any,
+        tipo: "original" as any,
       });
+      supabase.functions.invoke("procesar-foto", {
+        body: { foto_url: urlData.publicUrl, solicitud_id: solicitudId },
+      }).catch((e: any) => console.error("Watermark error:", e));
     }
     update("fotos_adicionales_urls", urls);
   };
