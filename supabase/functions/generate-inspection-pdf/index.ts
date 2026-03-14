@@ -8,9 +8,9 @@ const corsHeaders = {
 };
 
 // Brand colors
-const FOREST = rgb(0.11, 0.227, 0.18); // #1C3A2E
-const OCRE = rgb(0.776, 0.604, 0.314);  // #C69A50
-const SAND_BG = rgb(0.969, 0.957, 0.937); // #F7F4EF
+const FOREST = rgb(0.11, 0.227, 0.18);
+const OCRE = rgb(0.776, 0.604, 0.314);
+const SAND_BG = rgb(0.969, 0.957, 0.937);
 const WHITE = rgb(1, 1, 1);
 const DARK = rgb(0.12, 0.12, 0.12);
 const GRAY = rgb(0.45, 0.45, 0.45);
@@ -18,8 +18,10 @@ const LIGHT_GRAY = rgb(0.88, 0.88, 0.88);
 const GREEN = rgb(0.2, 0.65, 0.35);
 const YELLOW = rgb(0.75, 0.6, 0.15);
 const RED = rgb(0.75, 0.2, 0.2);
+const LIGHT_GREEN_BG = rgb(0.92, 0.97, 0.93);
+const LIGHT_YELLOW_BG = rgb(0.98, 0.96, 0.90);
 
-const PAGE_W = 595.28; // A4
+const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const MARGIN = 50;
 const CONTENT_W = PAGE_W - 2 * MARGIN;
@@ -77,6 +79,27 @@ const INSPECCION_SECTIONS: InspeccionSection[] = [
   },
 ];
 
+// Photo fields to include in the gallery with labels
+const PHOTO_FIELDS: { key: string; label: string }[] = [
+  { key: "foto_34_frontal_url", label: "3/4 frontal" },
+  { key: "foto_frontal_url", label: "Frontal" },
+  { key: "foto_lateral_izq_url", label: "Lateral izquierdo" },
+  { key: "foto_lateral_der_url", label: "Lateral derecho" },
+  { key: "foto_trasera_url", label: "Trasera" },
+  { key: "foto_34_trasero_url", label: "3/4 trasero" },
+  { key: "foto_interior_conduccion_url", label: "Interior conducción" },
+  { key: "foto_habitaculo_url", label: "Habitáculo" },
+  { key: "foto_dinette_url", label: "Dinette" },
+  { key: "foto_cocina_url", label: "Cocina" },
+  { key: "foto_cama_url", label: "Cama" },
+  { key: "foto_banio_url", label: "Baño" },
+  { key: "foto_motor_url", label: "Motor" },
+  { key: "foto_bajos_url", label: "Bajos" },
+  { key: "foto_neumaticos_url", label: "Neumáticos" },
+  { key: "foto_cuadro_electrico_url", label: "Cuadro eléctrico" },
+  { key: "foto_panel_solar_url", label: "Panel solar" },
+];
+
 function wrapText(text: string, font: any, fontSize: number, maxWidth: number): string[] {
   const words = text.split(" ");
   const lines: string[] = [];
@@ -93,6 +116,30 @@ function wrapText(text: string, font: any, fontSize: number, maxWidth: number): 
   }
   if (currentLine) lines.push(currentLine);
   return lines;
+}
+
+// Fetch and embed an image, returns null on failure
+async function fetchAndEmbedImage(pdfDoc: any, url: string): Promise<any | null> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return null;
+    const buffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+
+    // Detect format from bytes
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
+      return await pdfDoc.embedJpg(bytes);
+    } else if (bytes[0] === 0x89 && bytes[1] === 0x50) {
+      return await pdfDoc.embedPng(bytes);
+    }
+    // Try jpg as fallback
+    try { return await pdfDoc.embedJpg(bytes); } catch { /* skip */ }
+    try { return await pdfDoc.embedPng(bytes); } catch { /* skip */ }
+    return null;
+  } catch (e) {
+    console.warn("Failed to fetch image:", url, e);
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -125,40 +172,73 @@ Deno.serve(async (req) => {
       ? await supabase.from("talleres").select("nombre_taller, provincia").eq("id", sol.taller_id).maybeSingle()
       : { data: null };
 
+    // Also fetch fotos_solicitud (original seller photos)
+    const { data: fotosSolicitud } = await supabase
+      .from("fotos_solicitud")
+      .select("url, tipo")
+      .eq("solicitud_id", solicitud_id)
+      .order("created_at", { ascending: true });
+
     // Create PDF
     const pdfDoc = await PDFDocument.create();
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
 
-    // ─── Helper: add a new page with header/footer ───
     const createPage = () => {
       const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
-      // Header bar
       page.drawRectangle({ x: 0, y: PAGE_H - 60, width: PAGE_W, height: 60, color: FOREST });
       page.drawText("RODADO", { x: MARGIN, y: PAGE_H - 40, size: 20, font: timesRoman, color: WHITE });
       page.drawText("Informe de inspección verificada", { x: MARGIN + 105, y: PAGE_H - 38, size: 10, font: helvetica, color: rgb(0.85, 0.85, 0.85) });
-      // Footer
       page.drawLine({ start: { x: MARGIN, y: 40 }, end: { x: PAGE_W - MARGIN, y: 40 }, thickness: 0.5, color: LIGHT_GRAY });
       page.drawText("rodado.es — Servicio de venta verificada para particulares", { x: MARGIN, y: 26, size: 7, font: helvetica, color: GRAY });
       page.drawText("Documento generado automáticamente", { x: PAGE_W - MARGIN - 160, y: 26, size: 7, font: helvetica, color: GRAY });
       return page;
     };
 
-    // ─── PAGE 1: Cover ───
+    // ═══════════════════════════════════════════════════════
+    // PAGE 1: COVER WITH HERO IMAGE
+    // ═══════════════════════════════════════════════════════
     let page = createPage();
     let y = PAGE_H - 100;
 
-    // Vehicle name large
+    // Try to embed a hero image (3/4 frontal or frontal)
+    const heroUrl = inspeccion?.foto_34_frontal_url || inspeccion?.foto_frontal_url || null;
+    if (heroUrl) {
+      const heroImg = await fetchAndEmbedImage(pdfDoc, heroUrl);
+      if (heroImg) {
+        const imgDims = heroImg.scale(1);
+        const maxW = CONTENT_W;
+        const maxH = 220;
+        const scale = Math.min(maxW / imgDims.width, maxH / imgDims.height);
+        const drawW = imgDims.width * scale;
+        const drawH = imgDims.height * scale;
+        const imgX = MARGIN + (CONTENT_W - drawW) / 2;
+
+        // Background behind image
+        page.drawRectangle({ x: MARGIN - 3, y: y - drawH - 6, width: CONTENT_W + 6, height: drawH + 10, color: SAND_BG });
+        page.drawImage(heroImg, { x: imgX, y: y - drawH - 2, width: drawW, height: drawH });
+        y -= drawH + 20;
+      }
+    }
+
+    // Vehicle name
     const vehicleName = `${sol.marca} ${sol.modelo}`;
-    page.drawText(vehicleName.toUpperCase(), { x: MARGIN, y, size: 28, font: timesRoman, color: DARK });
-    y -= 30;
+    page.drawText(vehicleName.toUpperCase(), { x: MARGIN, y, size: 26, font: timesRoman, color: DARK });
+    y -= 28;
     page.drawText(`${sol.anio}`, { x: MARGIN, y, size: 18, font: helveticaBold, color: OCRE });
-    y -= 30;
+
+    // Price if available
+    if (sol.precio_venta) {
+      const priceText = `${sol.precio_venta.toLocaleString("es-ES")} €`;
+      const priceW = timesRoman.widthOfTextAtSize(priceText, 18);
+      page.drawText(priceText, { x: PAGE_W - MARGIN - priceW, y, size: 18, font: timesRoman, color: FOREST });
+    }
+    y -= 25;
 
     // Divider
     page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 2, color: OCRE });
-    y -= 25;
+    y -= 22;
 
     // Key data grid
     const dataPoints: [string, string][] = [
@@ -182,19 +262,17 @@ Deno.serve(async (req) => {
       const col = i % 3;
       const row = Math.floor(i / 3);
       const xPos = MARGIN + col * colW;
-      const yPos = y - row * 36;
+      const yPos = y - row * 34;
       page.drawText(label.toUpperCase(), { x: xPos, y: yPos, size: 7, font: helveticaBold, color: GRAY });
       page.drawText(value, { x: xPos, y: yPos - 13, size: 11, font: helveticaBold, color: DARK });
     });
-    y -= Math.ceil(dataPoints.length / 3) * 36 + 15;
+    y -= Math.ceil(dataPoints.length / 3) * 34 + 12;
 
-    // Divider
     page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.5, color: LIGHT_GRAY });
-    y -= 30;
+    y -= 25;
 
     // Score + Recommendation
     if (inspeccion?.puntuacion_general) {
-      // Score circle
       const circleX = MARGIN + 30;
       const circleY = y - 5;
       page.drawCircle({ x: circleX, y: circleY, size: 25, color: FOREST });
@@ -202,7 +280,6 @@ Deno.serve(async (req) => {
       page.drawText(scoreText, { x: circleX - (scoreText.length > 1 ? 10 : 5), y: circleY - 8, size: 20, font: timesRoman, color: WHITE });
       page.drawText("/10", { x: circleX + (scoreText.length > 1 ? 10 : 6), y: circleY - 3, size: 8, font: helvetica, color: WHITE });
 
-      // Recommendation text
       const recomTexts: Record<string, string> = {
         recomendado: "RECOMENDADO",
         recomendado_con_reservas: "CON RESERVAS",
@@ -216,7 +293,6 @@ Deno.serve(async (req) => {
       const recomKey = inspeccion.recomendacion || "recomendado";
       page.drawText(recomTexts[recomKey] || recomKey, { x: MARGIN + 65, y: y - 2, size: 14, font: helveticaBold, color: recomColors[recomKey] || DARK });
       page.drawText("Valoración del taller verificador", { x: MARGIN + 65, y: y - 18, size: 9, font: helvetica, color: GRAY });
-
       y -= 50;
     }
 
@@ -234,32 +310,189 @@ Deno.serve(async (req) => {
 
     // Observaciones generales
     if (inspeccion?.observaciones_generales) {
-      page.drawText("OBSERVACIONES GENERALES", { x: MARGIN, y, size: 10, font: helveticaBold, color: FOREST });
-      y -= 16;
-      const obsLines = wrapText(inspeccion.observaciones_generales, helvetica, 9, CONTENT_W);
-      for (const line of obsLines) {
-        if (y < 60) { page = createPage(); y = PAGE_H - 100; }
-        page.drawText(line, { x: MARGIN, y, size: 9, font: helvetica, color: DARK });
-        y -= 13;
+      if (y < 100) { page = createPage(); y = PAGE_H - 100; }
+      page.drawRectangle({ x: MARGIN, y: y - 60, width: CONTENT_W, height: 70, color: SAND_BG });
+      page.drawText("OBSERVACIONES GENERALES", { x: MARGIN + 10, y: y - 5, size: 10, font: helveticaBold, color: FOREST });
+      const obsLines = wrapText(inspeccion.observaciones_generales, helvetica, 9, CONTENT_W - 20);
+      let obsY = y - 20;
+      for (const line of obsLines.slice(0, 4)) {
+        page.drawText(line, { x: MARGIN + 10, y: obsY, size: 9, font: helvetica, color: DARK });
+        obsY -= 13;
       }
-      y -= 10;
+      y -= 80;
     }
 
     // Puntos destacados
     if (inspeccion?.puntos_destacados) {
       if (y < 100) { page = createPage(); y = PAGE_H - 100; }
-      page.drawText("PUNTOS DESTACADOS", { x: MARGIN, y, size: 10, font: helveticaBold, color: GREEN });
-      y -= 16;
-      const puntosLines = wrapText(inspeccion.puntos_destacados, helvetica, 9, CONTENT_W);
-      for (const line of puntosLines) {
-        if (y < 60) { page = createPage(); y = PAGE_H - 100; }
-        page.drawText(line, { x: MARGIN, y, size: 9, font: helvetica, color: DARK });
-        y -= 13;
+      page.drawRectangle({ x: MARGIN, y: y - 60, width: CONTENT_W, height: 70, color: LIGHT_GREEN_BG });
+      page.drawText("PUNTOS DESTACADOS", { x: MARGIN + 10, y: y - 5, size: 10, font: helveticaBold, color: GREEN });
+      const puntosLines = wrapText(inspeccion.puntos_destacados, helvetica, 9, CONTENT_W - 20);
+      let pY = y - 20;
+      for (const line of puntosLines.slice(0, 4)) {
+        page.drawText(line, { x: MARGIN + 10, y: pY, size: 9, font: helvetica, color: DARK });
+        pY -= 13;
       }
-      y -= 10;
+      y -= 80;
     }
 
-    // ─── PAGE 2+: Inspection checklist ───
+    // ═══════════════════════════════════════════════════════
+    // PHOTO GALLERY PAGES
+    // ═══════════════════════════════════════════════════════
+    if (inspeccion) {
+      // Collect all available photos
+      const photoEntries: { label: string; url: string }[] = [];
+      for (const pf of PHOTO_FIELDS) {
+        const url = inspeccion[pf.key];
+        if (url) photoEntries.push({ label: pf.label, url });
+      }
+      // Add fotos_adicionales
+      if (inspeccion.fotos_adicionales_urls?.length) {
+        inspeccion.fotos_adicionales_urls.forEach((url: string, i: number) => {
+          photoEntries.push({ label: `Adicional ${i + 1}`, url });
+        });
+      }
+
+      if (photoEntries.length > 0) {
+        // Fetch all images in parallel (max 20)
+        const toFetch = photoEntries.slice(0, 20);
+        const imageResults = await Promise.allSettled(
+          toFetch.map(async (entry) => {
+            const img = await fetchAndEmbedImage(pdfDoc, entry.url);
+            return { label: entry.label, img };
+          })
+        );
+
+        const embeddedPhotos = imageResults
+          .filter((r): r is PromiseFulfilledResult<{ label: string; img: any }> => r.status === "fulfilled" && r.value.img !== null)
+          .map((r) => r.value);
+
+        if (embeddedPhotos.length > 0) {
+          // Layout: 2 columns, 3 rows per page = 6 photos per page
+          const COLS = 2;
+          const ROWS = 3;
+          const GAP = 12;
+          const imgCellW = (CONTENT_W - GAP) / COLS;
+          const imgCellH = 180;
+          const PHOTOS_PER_PAGE = COLS * ROWS;
+
+          for (let pageIdx = 0; pageIdx < Math.ceil(embeddedPhotos.length / PHOTOS_PER_PAGE); pageIdx++) {
+            page = createPage();
+            y = PAGE_H - 80;
+
+            if (pageIdx === 0) {
+              page.drawText("GALERÍA FOTOGRÁFICA", { x: MARGIN, y, size: 16, font: timesRoman, color: FOREST });
+              y -= 8;
+              page.drawText("Fotografías tomadas durante la inspección del vehículo", { x: MARGIN, y, size: 9, font: helvetica, color: GRAY });
+              y -= 20;
+            }
+
+            const startIdx = pageIdx * PHOTOS_PER_PAGE;
+            const pagePhotos = embeddedPhotos.slice(startIdx, startIdx + PHOTOS_PER_PAGE);
+
+            for (let i = 0; i < pagePhotos.length; i++) {
+              const col = i % COLS;
+              const row = Math.floor(i / COLS);
+              const cellX = MARGIN + col * (imgCellW + GAP);
+              const cellY = y - row * (imgCellH + 28);
+
+              const { label, img } = pagePhotos[i];
+              const dims = img.scale(1);
+              const scale = Math.min(imgCellW / dims.width, (imgCellH - 18) / dims.height);
+              const drawW = dims.width * scale;
+              const drawH = dims.height * scale;
+
+              // Image background
+              page.drawRectangle({
+                x: cellX,
+                y: cellY - imgCellH,
+                width: imgCellW,
+                height: imgCellH,
+                color: SAND_BG,
+                borderColor: LIGHT_GRAY,
+                borderWidth: 0.5,
+              });
+
+              // Center image in cell
+              const imgX = cellX + (imgCellW - drawW) / 2;
+              const imgY = cellY - imgCellH + (imgCellH - 18 - drawH) / 2 + 18;
+              page.drawImage(img, { x: imgX, y: imgY, width: drawW, height: drawH });
+
+              // Label below
+              page.drawText(label.toUpperCase(), {
+                x: cellX + 6,
+                y: cellY - imgCellH + 5,
+                size: 7,
+                font: helveticaBold,
+                color: FOREST,
+              });
+            }
+          }
+        }
+      }
+
+      // ── Fotos de desperfectos ──
+      if (inspeccion.fotos_desperfectos_urls?.length > 0) {
+        const despUrls: string[] = inspeccion.fotos_desperfectos_urls;
+        const despImages = await Promise.allSettled(
+          despUrls.slice(0, 12).map(async (url: string) => {
+            const img = await fetchAndEmbedImage(pdfDoc, url);
+            return img;
+          })
+        );
+
+        const embeddedDesp = despImages
+          .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && r.value !== null)
+          .map((r) => r.value);
+
+        if (embeddedDesp.length > 0) {
+          page = createPage();
+          y = PAGE_H - 80;
+
+          // Title with warning color
+          page.drawRectangle({ x: MARGIN, y: y - 4, width: CONTENT_W, height: 28, color: LIGHT_YELLOW_BG });
+          page.drawText("DESPERFECTOS DETECTADOS", { x: MARGIN + 10, y: y, size: 14, font: timesRoman, color: YELLOW });
+          y -= 12;
+          page.drawText("Fotos tomadas por el verificador durante la inspección", { x: MARGIN + 10, y, size: 8, font: helvetica, color: GRAY });
+          y -= 25;
+
+          const COLS = 2;
+          const imgCellW = (CONTENT_W - 12) / COLS;
+          const imgCellH = 170;
+
+          for (let i = 0; i < embeddedDesp.length; i++) {
+            const col = i % COLS;
+            if (col === 0 && i > 0) y -= imgCellH + 15;
+            if (y - imgCellH < 60) { page = createPage(); y = PAGE_H - 100; }
+
+            const cellX = MARGIN + col * (imgCellW + 12);
+            const img = embeddedDesp[i];
+            const dims = img.scale(1);
+            const scale = Math.min(imgCellW / dims.width, imgCellH / dims.height);
+            const drawW = dims.width * scale;
+            const drawH = dims.height * scale;
+
+            page.drawRectangle({
+              x: cellX,
+              y: y - imgCellH,
+              width: imgCellW,
+              height: imgCellH,
+              borderColor: YELLOW,
+              borderWidth: 1,
+              color: WHITE,
+            });
+
+            const imgX = cellX + (imgCellW - drawW) / 2;
+            const imgY = y - imgCellH + (imgCellH - drawH) / 2;
+            page.drawImage(img, { x: imgX, y: imgY, width: drawW, height: drawH });
+          }
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // CHECKLIST PAGES
+    // ═══════════════════════════════════════════════════════
     page = createPage();
     y = PAGE_H - 100;
 
@@ -271,9 +504,18 @@ Deno.serve(async (req) => {
     for (const section of INSPECCION_SECTIONS) {
       if (y < 120) { page = createPage(); y = PAGE_H - 100; }
 
-      // Section header
       page.drawRectangle({ x: MARGIN, y: y - 4, width: CONTENT_W, height: 22, color: SAND_BG });
-      page.drawText(section.section.toUpperCase(), { x: MARGIN + 10, y: y, size: 10, font: helveticaBold, color: FOREST });
+      page.drawText(section.section.toUpperCase(), { x: MARGIN + 10, y, size: 10, font: helveticaBold, color: FOREST });
+
+      // Section score
+      const sectionItems = section.items.filter((item) => inspeccion?.[`${item.key}_estado`]);
+      const sectionCorrect = sectionItems.filter((item) => inspeccion?.[`${item.key}_estado`] === "correcto").length;
+      if (sectionItems.length > 0) {
+        const scoreText = `${sectionCorrect}/${sectionItems.length}`;
+        const scoreW = helveticaBold.widthOfTextAtSize(scoreText, 9);
+        const scoreColor = sectionCorrect === sectionItems.length ? GREEN : YELLOW;
+        page.drawText(scoreText, { x: PAGE_W - MARGIN - scoreW - 10, y, size: 9, font: helveticaBold, color: scoreColor });
+      }
       y -= 28;
 
       for (const item of section.items) {
@@ -282,14 +524,10 @@ Deno.serve(async (req) => {
         const estado = inspeccion?.[`${item.key}_estado`] || "—";
         const obs = inspeccion?.[`${item.key}_obs`] || "";
 
-        // Status indicator
         const statusColor = estado === "correcto" ? GREEN : estado === "con_observaciones" ? YELLOW : LIGHT_GRAY;
         page.drawCircle({ x: MARGIN + 8, y: y + 3, size: 4, color: statusColor });
-
-        // Item name
         page.drawText(item.label, { x: MARGIN + 20, y, size: 9, font: helveticaBold, color: DARK });
 
-        // Status text
         const statusText = estado === "correcto" ? "Correcto" : estado === "con_observaciones" ? "Observaciones" : estado === "no_aplica" ? "N/A" : "—";
         const statusTextColor = estado === "correcto" ? GREEN : estado === "con_observaciones" ? YELLOW : GRAY;
         const statusWidth = helvetica.widthOfTextAtSize(statusText, 8);
@@ -297,7 +535,6 @@ Deno.serve(async (req) => {
 
         y -= 14;
 
-        // Observation text
         if (obs) {
           const obsWrapped = wrapText(obs, helvetica, 8, CONTENT_W - 30);
           for (const oLine of obsWrapped) {
@@ -306,14 +543,14 @@ Deno.serve(async (req) => {
             y -= 11;
           }
         }
-
         y -= 4;
       }
-
       y -= 10;
     }
 
-    // ─── Equipment section ───
+    // ═══════════════════════════════════════════════════════
+    // EQUIPMENT
+    // ═══════════════════════════════════════════════════════
     if (inspeccion) {
       if (y < 200) { page = createPage(); y = PAGE_H - 100; }
 
@@ -347,7 +584,6 @@ Deno.serve(async (req) => {
         const xPos = MARGIN + col * eqColW;
         const yPos = y - row * 18;
         if (yPos < 60) return;
-        // Alternate row bg
         if (col === 0 && row % 2 === 0) {
           page.drawRectangle({ x: MARGIN, y: yPos - 4, width: CONTENT_W, height: 18, color: SAND_BG });
         }
@@ -372,7 +608,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ─── Documentation ───
+    // ═══════════════════════════════════════════════════════
+    // DOCUMENTATION
+    // ═══════════════════════════════════════════════════════
     if (inspeccion && (inspeccion.itv_fecha_caducidad || inspeccion.num_propietarios)) {
       if (y < 120) { page = createPage(); y = PAGE_H - 100; }
       page.drawText("DOCUMENTACIÓN", { x: MARGIN, y, size: 12, font: timesRoman, color: FOREST });
@@ -397,10 +635,11 @@ Deno.serve(async (req) => {
       y -= 25;
     }
 
-    // ─── Final page: Sello Rodado ───
+    // ═══════════════════════════════════════════════════════
+    // SELLO RODADO (FINAL)
+    // ═══════════════════════════════════════════════════════
     if (y < 200) { page = createPage(); y = PAGE_H - 100; }
 
-    // Sello box
     const selloY = y - 10;
     page.drawRectangle({ x: MARGIN, y: selloY - 100, width: CONTENT_W, height: 110, color: FOREST, borderColor: OCRE, borderWidth: 2 });
     page.drawText("VEHÍCULO RODADO", { x: PAGE_W / 2 - 65, y: selloY - 30, size: 16, font: timesRoman, color: OCRE });
