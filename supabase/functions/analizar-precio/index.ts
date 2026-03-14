@@ -154,7 +154,6 @@ serve(async (req) => {
       // Keep payload minimal to avoid actor input validation issues
     };
 
-    console.log("Calling Apify web-scraper with", startUrls.length, "URLs...");
 
     let apifyResponse = await fetch(apifyEndpoint, {
       method: "POST",
