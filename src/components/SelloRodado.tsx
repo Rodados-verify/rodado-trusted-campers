@@ -1,23 +1,28 @@
 import { CheckCircle } from "lucide-react";
 
-export const SelloRodado = ({ size = "md" }: { size?: "sm" | "md" | "lg" }) => {
-  const sizeClasses = {
-    sm: "h-16 w-16 text-[8px]",
-    md: "h-24 w-24 text-[10px]",
-    lg: "h-32 w-32 text-xs",
+interface SelloRodadoProps {
+  size?: "sm" | "md" | "lg" | "xl";
+}
+
+export const SelloRodado = ({ size = "md" }: SelloRodadoProps) => {
+  const sizeMap = {
+    sm: { container: "h-16 w-16", icon: "h-3 w-3", text: "text-[7px]" },
+    md: { container: "h-24 w-24", icon: "h-4 w-4", text: "text-[9px]" },
+    lg: { container: "h-32 w-32", icon: "h-5 w-5", text: "text-[11px]" },
+    xl: { container: "h-[120px] w-[120px]", icon: "h-6 w-6", text: "text-xs" },
   };
 
+  const s = sizeMap[size];
+
   return (
-    <div
-      className={`${sizeClasses[size]} relative flex flex-col items-center justify-center rounded-full border-2 border-ocre`}
-      style={{ boxShadow: "inset 0 0 0 3px transparent, 0 0 0 1px hsl(var(--ocre) / 0.3)" }}
-    >
-      <div className="absolute inset-1 rounded-full border border-ocre/40" />
-      <CheckCircle className="h-3.5 w-3.5 text-ocre mb-0.5" />
-      <span className="font-display font-bold tracking-widest uppercase text-ocre leading-tight">
+    <div className={`${s.container} relative flex flex-col items-center justify-center rounded-full border-[2.5px] border-ocre`}>
+      {/* Inner double border */}
+      <div className="absolute inset-[3px] rounded-full border-[1.5px] border-ocre/50" />
+      <CheckCircle className={`${s.icon} text-ocre mb-0.5`} />
+      <span className={`${s.text} font-display font-bold tracking-[0.2em] uppercase text-ocre leading-tight`}>
         Vehículo
       </span>
-      <span className="font-display font-bold tracking-widest uppercase text-ocre leading-tight">
+      <span className={`${s.text} font-display font-bold tracking-[0.2em] uppercase text-ocre leading-tight`}>
         Rodado
       </span>
     </div>
