@@ -74,7 +74,7 @@ const INSPECCION_SECTIONS: { section: string; items: { key: string; label: strin
 
 const SECCIONES_LEGACY = ["Mecánica", "Carrocería", "Habitáculo", "Instalaciones", "Documentación"];
 
-export const VehiculoInspeccion = ({ checklistItems, informe, inspeccion }: VehiculoInspeccionProps) => {
+export const VehiculoInspeccion = ({ checklistItems, informe, inspeccion, fotosDesperfectos = [] }: VehiculoInspeccionProps) => {
   // Use inspeccion_detalle if available, otherwise fall back to legacy checklist_items
   const useNewFormat = !!inspeccion;
 
