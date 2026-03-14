@@ -116,10 +116,10 @@ serve(async (req) => {
 
         const existing = new Set(items.map((item) => item.precio));
         matches.forEach((digits, idx) => {
-          const precio = `\${digits}€`;
+          const precio = digits + '€';
           if (!existing.has(precio)) {
             items.push({
-              titulo: `Comparable \${idx + 1}`,
+              titulo: 'Comparable ' + (idx + 1),
               precio,
               km: '',
               anio: '',
