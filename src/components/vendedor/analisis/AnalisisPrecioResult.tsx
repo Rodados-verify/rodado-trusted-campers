@@ -165,7 +165,7 @@ const AnalisisPrecioResult = ({ analisis, precioVenta, onUpdatePrecio, onRefresh
                       rel="noopener noreferrer"
                       className="text-xs text-ocre hover:underline flex items-center gap-1"
                     >
-                      Ver anuncio <ExternalLink className="h-3 w-3" />
+                      Buscar similares <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
                 </div>
