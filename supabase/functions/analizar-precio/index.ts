@@ -42,31 +42,62 @@ serve(async (req) => {
     // Step 2 — Scrape via Apify (broad + specific queries across 3 platforms)
     const fullQuery = `${marca} ${modelo}`.replace(/\s+/g, "+");
 
-    // Primary URLs across requested marketplaces (flexible query, no exact matching)
+    // Primary + fallback URLs across requested marketplaces (Wallapop, Milanuncios, Coches.net)
+    const marcaQuery = marca.replace(/\s+/g, "+");
     const startUrls = [
-      { url: `https://www.milanuncios.com/autocaravanas/?q=${fullQuery}+camper&aniodesde=${anio - 5}&aniohasta=${anio + 5}` },
-      { url: `https://www.wallapop.com/app/search?keywords=${fullQuery}+camper&category_ids=14000` },
-      { url: `https://www.coches.net/autocaravanas-y-remolques/?q=${fullQuery}+camper` },
+      // Milanuncios
+      { url: `https://www.milanuncios.com/autocaravanas/?q=${fullQuery}&aniodesde=${anio - 6}&aniohasta=${anio + 6}` },
+      { url: `https://www.milanuncios.com/autocaravanas/?q=${marcaQuery}+camper` },
+      // Wallapop
+      { url: `https://www.wallapop.com/app/search?keywords=${fullQuery}&category_ids=14000` },
+      { url: `https://www.wallapop.com/app/search?keywords=${marcaQuery}+camper&category_ids=14000` },
+      // Coches.net
+      { url: `https://www.coches.net/autocaravanas-y-remolques/?q=${fullQuery}` },
+      { url: `https://www.coches.net/autocaravanas-y-remolques/?q=${marcaQuery}+camper` },
     ];
 
     const pageFunction = `async function pageFunction(context) {
       const { $, request, log } = context;
       const items = [];
 
-      const extractPriceDigits = (text = '') => {
-        const normalized = String(text).replace(/\s+/g, ' ');
-        const match = normalized.match(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)?/i);
-        return match ? match[1].replace(/[.,\s]/g, '') : '';
+      const toNumber = (raw) => parseInt(String(raw || '').replace(/[.,\s]/g, '').replace(/\D/g, ''), 10);
+
+      const extractPriceNumber = (text = '') => {
+        const normalized = String(text).replace(/\s+/g, ' ').trim();
+        if (!normalized) return null;
+
+        // 1) Prefer numbers explicitly followed by euro symbol/word
+        const euroMatches = [...normalized.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)\b/gi)]
+          .map((m) => toNumber(m[1]))
+          .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+        if (euroMatches.length > 0) return euroMatches[0];
+
+        // 2) Fallback: generic numbers in plausible price range, excluding obvious years and km tokens
+        const genericMatches = [...normalized.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})/g)]
+          .map((m) => {
+            const value = toNumber(m[1]);
+            const idx = m.index || 0;
+            const tail = normalized.slice(idx, idx + 16).toLowerCase();
+            return { value, tail };
+          })
+          .filter(({ value, tail }) => (
+            Number.isFinite(value) &&
+            value >= 3000 &&
+            value <= 300000 &&
+            !(value >= 1900 && value <= 2035) &&
+            !tail.includes('km')
+          ))
+          .map(({ value }) => value);
+
+        if (genericMatches.length === 0) return null;
+        return genericMatches.sort((a, b) => a - b)[Math.floor(genericMatches.length / 2)];
       };
 
-      // Very broad selectors to catch listing cards across sites
       const cardSelectors = [
-        '[data-testid="listing"]', '.ma-AdCard', '.ma-AdCardV2',
-        'article', '.vehicle-card', '[class*="ItemCard"]', '[class*="ad-card"]',
-        '[class*="AdCard"]', '[class*="listing"]', '[class*="Listing"]',
-        '.ad-list-item', '.list-item', '.product-card', '[class*="product"]',
-        '[class*="Result"]', '[class*="result"]', '.card', '[class*="Card"]',
-        '[class*="item"]', '[class*="Item"]'
+        '[data-testid="listing"]', '.ma-AdCard', '.ma-AdCardV2', 'article', '.vehicle-card',
+        '[class*="ItemCard"]', '[class*="ad-card"]', '[class*="listing"]', '[class*="Listing"]',
+        '.ad-list-item', '.list-item', '.product-card', '[class*="product"]', '[class*="Result"]',
+        '[class*="result"]', '.card', '[class*="Card"]', '[class*="item"]', '[class*="Item"]'
       ].join(', ');
 
       const titleSelectors = 'h1, h2, h3, h4, .title, [class*="title"], [class*="Title"], [class*="name"], [class*="Name"]';
@@ -75,16 +106,16 @@ serve(async (req) => {
       const yearSelectors = '[class*="year"], [class*="anio"], [class*="Year"], [class*="date"]';
 
       $(cardSelectors).each((i, el) => {
-        if (i >= 40) return false;
+        if (i >= 50) return false;
+
         const $el = $(el);
         const cardText = $el.text().replace(/\s+/g, ' ').trim();
-
         const tituloRaw = $el.find(titleSelectors).first().text().trim();
-        const titulo = tituloRaw || cardText.slice(0, 90) || ('Anuncio ' + (i + 1));
+        const titulo = tituloRaw || cardText.slice(0, 100) || ('Anuncio ' + (i + 1));
 
         const priceText = $el.find(priceSelectors).first().text().trim();
-        const precioDigits = extractPriceDigits(priceText) || extractPriceDigits(cardText);
-        if (!precioDigits) return;
+        const precioNum = extractPriceNumber(priceText) ?? extractPriceNumber(cardText);
+        if (!precioNum) return;
 
         const kmText = $el.find(kmSelectors).first().text().trim();
         const kmFromText = cardText.match(/(\d{1,3}(?:[.\s]\d{3})?|\d+)\s*km/i);
@@ -98,37 +129,13 @@ serve(async (req) => {
 
         items.push({
           titulo,
-          precio: precioDigits + '€',
+          precio: String(precioNum) + '€',
           km: finalKm,
           anio: finalAnio,
           url: href.startsWith('http') ? href : request.url.split('/').slice(0, 3).join('/') + href,
           fuente: new URL(request.url).hostname.replace('www.', '').split('.')[0]
         });
       });
-
-      // Fallback: if structured extraction is poor, extract raw price patterns from full page text
-      if (items.length < 3) {
-        const bodyText = $('body').text().replace(/\s+/g, ' ');
-        const matches = [...bodyText.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*€/g)]
-          .map((m) => m[1].replace(/[.,\s]/g, ''))
-          .filter(Boolean)
-          .slice(0, 12);
-
-        const existing = new Set(items.map((item) => item.precio));
-        matches.forEach((digits, idx) => {
-          const precio = digits + '€';
-          if (!existing.has(precio)) {
-            items.push({
-              titulo: 'Comparable ' + (idx + 1),
-              precio,
-              km: '',
-              anio: '',
-              url: request.url,
-              fuente: new URL(request.url).hostname.replace('www.', '').split('.')[0]
-            });
-          }
-        });
-      }
 
       log.info('Scraped ' + items.length + ' items from ' + request.url);
       return items;
