@@ -163,6 +163,7 @@ serve(async (req) => {
       directSources.map(async ({ fuente, url }) => {
         try {
           const resp = await fetch(url, {
+            signal: AbortSignal.timeout(6000),
             headers: {
               "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
               "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
