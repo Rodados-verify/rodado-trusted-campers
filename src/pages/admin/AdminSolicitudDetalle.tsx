@@ -178,6 +178,30 @@ const AdminSolicitudDetalle = () => {
     }
   };
 
+  const deleteSolicitud = async () => {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      // First delete storage files
+      const { data: fotos } = await supabase.from("fotos_solicitud").select("url").eq("solicitud_id", id);
+      if (fotos && fotos.length > 0) {
+        const paths = fotos.map(f => f.url);
+        await supabase.storage.from("solicitud-fotos").remove(paths);
+      }
+
+      // Cascade delete via RPC
+      const { error } = await supabase.rpc("delete_solicitud_cascade", { _solicitud_id: id });
+      if (error) throw error;
+
+      toast({ title: "Solicitud eliminada", description: "Se han borrado todos los datos asociados." });
+      navigate("/admin");
+    } catch (err: any) {
+      toast({ title: "Error al eliminar", description: err.message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center py-20"><p className="text-muted-foreground">Cargando…</p></div>;
   if (!solicitud) return <div className="py-20 text-center"><p>Solicitud no encontrada</p></div>;
 
