@@ -45,6 +45,7 @@ const AdminSolicitudDetalle = () => {
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
   const [ficha, setFicha] = useState<any>(null);
   const [fotosProcesadas, setFotosProcesadas] = useState<any[]>([]);
+  const [inspeccionDetalle, setInspeccionDetalle] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const [deleting, setDeleting] = useState(false);
@@ -88,6 +89,9 @@ const AdminSolicitudDetalle = () => {
 
       const { data: fp } = await supabase.from("fotos_solicitud").select("*").eq("solicitud_id", id).eq("tipo", "procesada");
       setFotosProcesadas(fp || []);
+
+      const { data: inspeccion } = await supabase.from("inspeccion_detalle").select("*").eq("solicitud_id", id).maybeSingle();
+      setInspeccionDetalle(inspeccion);
 
       setLoading(false);
     };
@@ -206,8 +210,9 @@ const AdminSolicitudDetalle = () => {
   if (!solicitud) return <div className="py-20 text-center"><p>Solicitud no encontrada</p></div>;
 
   const assignedTaller = talleres.find(t => t.id === solicitud.taller_id);
-  const canGenerate = solicitud.estado === "en_inspeccion" || solicitud.estado === "contenido_generado" || solicitud.estado === "asignado";
-  const canPublish = descripcion && (solicitud.estado === "contenido_generado" || solicitud.estado === "en_inspeccion");
+  const inspeccionCompleta = inspeccionDetalle && inspeccionDetalle.puntuacion_general !== null;
+  const canGenerate = inspeccionCompleta && (solicitud.estado === "en_inspeccion" || solicitud.estado === "contenido_generado");
+  const canPublish = inspeccionCompleta && descripcion && solicitud.estado === "contenido_generado";
 
   return (
     <div className="space-y-8">
@@ -374,6 +379,12 @@ const AdminSolicitudDetalle = () => {
         <h3 className="font-display text-lg font-semibold">Contenido y publicación</h3>
 
         {/* Generate content button */}
+        {solicitud.estado !== "publicado" && !inspeccionCompleta && (
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+            ⏳ La inspección del taller aún no se ha completado. Los botones de generar contenido y publicar estarán disponibles cuando el taller envíe su verificación.
+          </div>
+        )}
+
         {solicitud.estado !== "publicado" && (
           <Button
             variant="ocre"
