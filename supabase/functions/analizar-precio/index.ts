@@ -141,58 +141,84 @@ serve(async (req) => {
       return items;
     }`;
 
-    console.log("Calling Apify web-scraper with", startUrls.length, "URLs...");
     const apifyEndpoint = `https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}`;
 
-    const apifyPrimaryPayload = {
-      startUrls,
-      pageFunction,
-      maxRequestsPerCrawl: 12,
-      maxConcurrency: 3,
-      useChrome: true, // Enable JS rendering for dynamic sites like Wallapop
-      waitUntil: ["networkidle2"], // Apify expects an array
+    const extractPricesFromHtml = (html: string): number[] => {
+      const matches = [...html.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)\b/gi)]
+        .map((m) => parseInt(m[1].replace(/[.,\s]/g, ""), 10))
+        .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+
+      // unique + keep first prices found
+      return [...new Set(matches)].slice(0, 8);
     };
 
-    const apifyFallbackPayload = {
-      startUrls,
-      pageFunction,
-      maxRequestsPerCrawl: 20,
-      maxConcurrency: 3,
-      // Keep payload minimal to avoid actor input validation issues
-    };
+    // Fast path: direct scrape from all 3 marketplaces (much faster than full Apify crawl)
+    const directSources = [
+      { fuente: "milanuncios", url: startUrls[0].url },
+      { fuente: "wallapop", url: startUrls[2].url },
+      { fuente: "coches", url: startUrls[4].url },
+    ];
 
+    const directResultsNested = await Promise.all(
+      directSources.map(async ({ fuente, url }) => {
+        try {
+          const resp = await fetch(url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
+              "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+            },
+          });
 
-    let apifyResponse = await fetch(apifyEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(apifyPrimaryPayload),
-    });
+          if (!resp.ok) return [];
+          const html = await resp.text();
+          const prices = extractPricesFromHtml(html);
 
-    if (!apifyResponse.ok) {
-      const firstError = await apifyResponse.text();
-      console.error("Apify primary call error:", apifyResponse.status, firstError);
-      console.log("Retrying Apify with fallback payload...");
+          return prices.map((precio, idx) => ({
+            titulo: `${marca} ${modelo} (${fuente})`,
+            precio: `${precio}€`,
+            km: "",
+            anio: String(anio),
+            url,
+            fuente,
+            _direct: true,
+            _idx: idx,
+          }));
+        } catch {
+          return [];
+        }
+      })
+    );
 
-      apifyResponse = await fetch(apifyEndpoint, {
+    let resultados: any[] = directResultsNested.flat();
+    console.log(`Direct scrape returned ${resultados.length} raw results`);
+
+    // Slow fallback: Apify only if direct scraping did not find enough
+    if (resultados.length < 3) {
+      console.log("Calling Apify fallback with", startUrls.length, "URLs...");
+
+      const apifyPayload = {
+        startUrls,
+        pageFunction,
+        maxRequestsPerCrawl: 4,
+        maxConcurrency: 2,
+      };
+
+      const apifyResponse = await fetch(apifyEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apifyFallbackPayload),
+        body: JSON.stringify(apifyPayload),
       });
 
-      if (!apifyResponse.ok) {
+      if (apifyResponse.ok) {
+        const apifyData = await apifyResponse.json();
+        const apifyFlat = Array.isArray(apifyData) && Array.isArray(apifyData[0]) ? apifyData.flat() : apifyData;
+        resultados = [...resultados, ...(Array.isArray(apifyFlat) ? apifyFlat : [])];
+      } else {
         console.error("Apify fallback call error:", apifyResponse.status, await apifyResponse.text());
       }
     }
 
-    let resultados: any[] = [];
-    if (apifyResponse.ok) {
-      resultados = await apifyResponse.json();
-      if (Array.isArray(resultados) && resultados.length > 0 && Array.isArray(resultados[0])) {
-        resultados = resultados.flat();
-      }
-    }
-
-    console.log(`Apify returned ${resultados.length} raw results`);
+    console.log(`Total raw results for analysis: ${resultados.length}`);
 
     // Step 3 — Filter relevant results (more tolerant)
     const extractPriceNumberServer = (value: unknown): number => {
