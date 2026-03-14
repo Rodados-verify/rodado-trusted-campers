@@ -98,7 +98,7 @@ serve(async (req) => {
 
         items.push({
           titulo,
-          precio: `${precioDigits}€`,
+          precio: `\${precioDigits}€`,
           km: finalKm,
           anio: finalAnio,
           url: href.startsWith('http') ? href : request.url.split('/').slice(0, 3).join('/') + href,
