@@ -196,9 +196,7 @@ serve(async (req) => {
     }
 
     // Step 4 — AI Analysis via Lovable AI Gateway
-    const precios = vehiculosFiltrados.map((v: any) =>
-      parseInt(String(v.precio).replace(/\D/g, ""))
-    );
+    const precios = vehiculosFiltrados.map((v: any) => v._precioNum).filter((p: number) => p > 0);
     const precioMedio = Math.round(precios.reduce((a: number, b: number) => a + b, 0) / precios.length);
     const precioMinimo = Math.min(...precios);
     const precioMaximo = Math.max(...precios);
