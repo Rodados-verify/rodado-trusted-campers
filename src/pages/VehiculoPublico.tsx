@@ -38,16 +38,46 @@ const VehiculoPublico = () => {
       const { data: sol } = await supabase.from("solicitudes").select("*").eq("id", f.solicitud_id).single();
       setSolicitud(sol);
 
-      // Photos
+      // Photos — categorize based on inspeccion_detalle URLs
       const { data: allFotos } = await supabase.from("fotos_solicitud").select("id, url, tipo").eq("solicitud_id", f.solicitud_id).order("created_at", { ascending: true });
       const procesadas = (allFotos || []).filter((fo: any) => fo.tipo === "procesada");
       const originales = (allFotos || []).filter((fo: any) => fo.tipo === "original");
       const fotosToShow = procesadas.length > 0 ? procesadas : originales;
-      const resolvedPhotos: Photo[] = fotosToShow.map((fo: any) => {
-        if (fo.url.startsWith("http")) return { id: fo.id, publicUrl: fo.url };
-        const { data } = supabase.storage.from("solicitud-fotos").getPublicUrl(fo.url);
-        return { id: fo.id, publicUrl: data.publicUrl };
+      
+      // Fetch inspeccion to categorize photos
+      const { data: insp } = await (supabase as any).from("inspeccion_detalle").select("*").eq("solicitud_id", f.solicitud_id).maybeSingle();
+      setInspeccion(insp);
+
+      // Build URL→category map from inspeccion_detalle
+      const urlCategoryMap = new Map<string, PhotoCategory>();
+      if (insp) {
+        const exteriorKeys = ["foto_frontal_url", "foto_lateral_izq_url", "foto_lateral_der_url", "foto_trasera_url", "foto_34_frontal_url", "foto_34_trasero_url", "foto_bajos_url"];
+        const interiorKeys = ["foto_interior_conduccion_url", "foto_motor_url", "foto_neumaticos_url"];
+        const viviendaKeys = ["foto_dinette_url", "foto_cocina_url", "foto_banio_url", "foto_cama_url", "foto_habitaculo_url", "foto_cuadro_electrico_url", "foto_panel_solar_url"];
+        exteriorKeys.forEach(k => { if (insp[k]) urlCategoryMap.set(insp[k], "exterior"); });
+        interiorKeys.forEach(k => { if (insp[k]) urlCategoryMap.set(insp[k], "interior"); });
+        viviendaKeys.forEach(k => { if (insp[k]) urlCategoryMap.set(insp[k], "vivienda"); });
+        // Defect photos
+        (insp.fotos_desperfectos_urls || []).forEach((url: string) => urlCategoryMap.set(url, "desperfectos"));
+        // Additional photos default to vivienda
+        (insp.fotos_adicionales_urls || []).forEach((url: string) => { if (!urlCategoryMap.has(url)) urlCategoryMap.set(url, "vivienda"); });
+      }
+
+      const resolvedPhotos: GalleryPhoto[] = fotosToShow.map((fo: any) => {
+        const publicUrl = fo.url.startsWith("http") ? fo.url : supabase.storage.from("solicitud-fotos").getPublicUrl(fo.url).data.publicUrl;
+        return { id: fo.id, publicUrl, category: urlCategoryMap.get(publicUrl) || urlCategoryMap.get(fo.url) };
       });
+      
+      // Add defect photos that aren't already in fotos_solicitud
+      if (insp?.fotos_desperfectos_urls?.length > 0) {
+        const existingUrls = new Set(resolvedPhotos.map(p => p.publicUrl));
+        insp.fotos_desperfectos_urls.forEach((url: string, i: number) => {
+          if (!existingUrls.has(url)) {
+            resolvedPhotos.push({ id: `desperfecto-${i}`, publicUrl: url, category: "desperfectos" });
+          }
+        });
+      }
+      
       setPhotos(resolvedPhotos);
 
       // Checklist (legacy)
