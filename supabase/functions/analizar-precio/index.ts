@@ -425,64 +425,77 @@ serve(async (req) => {
       `site:coches.net "${marca} ${modelo}" segunda mano`,
     ];
 
-    // First run Google search, then use results + direct scraping
-    let discoveredUrls: string[] = [];
+    // Run Google search
+    let googleResult: { urls: string[]; organicResults: GoogleOrganicResult[] } = { urls: [], organicResults: [] };
     try {
-      const googleUrls = await runGoogleSearch(APIFY_TOKEN, searchQueries).catch((err) => {
-        console.error("Google search error:", err);
-        return [] as string[];
-      });
-      console.log(`Google found ${googleUrls.length} URLs`);
-
-      // Now scrape category pages found by Google + direct platform search
-      const platformUrls = await scrapeListingUrlsFromPlatform(marca, modelo, googleUrls).catch((err) => {
-        console.error("Platform scraping error:", err);
-        return [] as string[];
-      });
-
-      discoveredUrls = [...googleUrls, ...platformUrls];
-      console.log(`Total: ${discoveredUrls.length} URLs (Google: ${googleUrls.length}, Platform: ${platformUrls.length})`);
+      googleResult = await runGoogleSearch(APIFY_TOKEN, searchQueries);
+      console.log(`Google found ${googleResult.urls.length} URLs, ${googleResult.organicResults.length} organic results`);
     } catch (err) {
-      console.error("Search discovery error:", err);
+      console.error("Google search error:", err);
     }
 
-    // Log all discovered URLs for debugging
-    const rejectedUrls: string[] = [];
-    const directListingUrls = discoveredUrls
-      .map((u) => String(u || "").trim())
-      .filter((u) => {
-        const fuente = detectFuenteFromUrl(u);
-        if (!fuente) return false;
-        const isListing = isDirectListingUrl(u, fuente);
-        if (!isListing) rejectedUrls.push(`[${fuente}] ${u}`);
-        return isListing;
-      });
-    
-    if (rejectedUrls.length > 0) {
-      console.log("Rejected URLs (not matching listing pattern):", rejectedUrls.slice(0, 10).join("\n"))
+    // Strategy A: Extract comparables from Google snippets (works for JS-rendered sites like Milanuncios/Coches.net)
+    const snippetComparables: ComparableCandidate[] = [];
+    for (const result of googleResult.organicResults) {
+      const fuente = detectFuenteFromUrl(result.url || "");
+      if (fuente === "milanuncios" || fuente === "coches") {
+        const comp = extractComparableFromSnippet(result, marcaTokens, modeloTokens, anio, km || 200000);
+        if (comp) snippetComparables.push(comp);
+      }
     }
+    console.log(`Snippet extraction: ${snippetComparables.length} comparables from Milanuncios/Coches.net snippets`);
 
-    // Balance URLs by source to avoid one platform dominating
-    const bySource: Record<string, string[]> = { wallapop: [], milanuncios: [], coches: [] };
-    for (const u of [...new Set(directListingUrls)]) {
+    // Strategy B: Fetch Wallapop listing pages directly (they're server-rendered)
+    const wallapopUrls = googleResult.urls.filter((u) => {
       const f = detectFuenteFromUrl(u);
-      if (f && bySource[f].length < 12) bySource[f].push(u);
-    }
-    const uniqueListingUrls = [...bySource.wallapop, ...bySource.milanuncios, ...bySource.coches];
-    console.log(`Balanced listing URLs: wallapop=${bySource.wallapop.length}, milanuncios=${bySource.milanuncios.length}, coches=${bySource.coches.length}`);
+      return f === "wallapop" && isDirectListingUrl(u, f);
+    });
 
-    // 3) Extract each listing data from listing page itself
+    // Also scrape Wallapop category pages for more item URLs
+    const wallapopCategoryUrls = googleResult.urls.filter(
+      (u) => u.includes("wallapop.com/") && !u.includes("/item/") && !u.includes("google.com"),
+    );
+    const extraWallapopUrls: string[] = [];
+    for (const catUrl of wallapopCategoryUrls.slice(0, 3)) {
+      try {
+        const res = await fetch(catUrl, {
+          signal: AbortSignal.timeout(6000),
+          headers: {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+            "Accept-Language": "es-ES,es;q=0.9",
+          },
+        });
+        if (!res.ok) { await res.text(); continue; }
+        const html = await res.text();
+        const itemMatches = [
+          ...html.matchAll(/href=["'](https?:\/\/[^"']*wallapop\.com\/item\/[^"']+)["']/gi),
+          ...html.matchAll(/href=["'](\/item\/[^"']+)["']/gi),
+        ];
+        for (const m of itemMatches) {
+          const href = m[1].startsWith("/") ? `https://es.wallapop.com${m[1]}` : m[1];
+          extraWallapopUrls.push(href);
+        }
+      } catch { /* skip */ }
+    }
+
+    const allWallapopUrls = [...new Set([...wallapopUrls, ...extraWallapopUrls])].slice(0, 15);
+    console.log(`Wallapop: ${wallapopUrls.length} direct + ${extraWallapopUrls.length} from categories = ${allWallapopUrls.length} to fetch`);
+
+    // Fetch Wallapop pages
     let fetchFailures = 0;
-    const comparableCandidates = (
+    const wallapopComparables = (
       await Promise.all(
-        uniqueListingUrls.map(async (url) => {
+        allWallapopUrls.map(async (url) => {
           const result = await fetchComparableFromListing(url, marcaTokens, modeloTokens, anio, km || 200000);
           if (!result) fetchFailures++;
           return result;
         }),
       )
     ).filter(Boolean) as ComparableCandidate[];
-    console.log(`Fetch results: ${comparableCandidates.length} extracted, ${fetchFailures} failed`);
+    console.log(`Wallapop fetch: ${wallapopComparables.length} extracted, ${fetchFailures} failed`);
+
+    // Combine all comparables
+    const comparableCandidates = [...wallapopComparables, ...snippetComparables];
 
     // Dedupe by source + price + URL
     const seen = new Set<string>();
