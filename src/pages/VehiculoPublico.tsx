@@ -88,9 +88,7 @@ const VehiculoPublico = () => {
       const { data: inf } = await supabase.from("informes").select("*").eq("solicitud_id", f.solicitud_id).maybeSingle();
       setInforme(inf);
 
-      // Inspeccion detalle (new)
-      const { data: insp } = await (supabase as any).from("inspeccion_detalle").select("*").eq("solicitud_id", f.solicitud_id).maybeSingle();
-      setInspeccion(insp);
+      // Inspeccion detalle already fetched above for photo categorization
 
       // Vendedor
       if (sol) {
