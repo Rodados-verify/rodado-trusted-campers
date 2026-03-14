@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import SolicitudStepper from "@/components/vendedor/SolicitudStepper";
-import { ExternalLink, Copy, Clock } from "lucide-react";
+import { ExternalLink, Copy, Clock, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const VendedorFicha = () => {
@@ -13,6 +13,7 @@ const VendedorFicha = () => {
   const [estado, setEstado] = useState<string | null>(null);
   const [fichaSlug, setFichaSlug] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const fetch = async () => {
@@ -35,6 +36,9 @@ const VendedorFicha = () => {
           const { data: ficha } = await supabase.from("fichas").select("slug").eq("solicitud_id", sol.id).eq("activa", true).maybeSingle();
           if (ficha?.slug) setFichaSlug(ficha.slug);
         }
+        // Fetch PDF URL from informes
+        const { data: informe } = await supabase.from("informes").select("url_pdf").eq("solicitud_id", sol.id).maybeSingle();
+        if (informe?.url_pdf) setPdfUrl(informe.url_pdf);
       }
       setLoading(false);
     };
@@ -79,6 +83,17 @@ const VendedorFicha = () => {
         <div className="rounded-xl border border-border bg-white p-6 lg:p-8">
           <SolicitudStepper currentStatus={estado as any} createdAt={createdAt || undefined} />
         </div>
+        {pdfUrl && (
+          <div className="rounded-xl border border-border bg-white p-6 space-y-3">
+            <h3 className="font-display text-lg font-semibold text-foreground">Informe de inspección</h3>
+            <p className="text-sm text-muted-foreground">Tu informe ya está disponible. Puedes descargarlo y compartirlo con posibles compradores.</p>
+            <Button variant="outline" asChild>
+              <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
+                <Download className="mr-2 h-4 w-4" /> Descargar informe (PDF)
+              </a>
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -113,6 +128,13 @@ const VendedorFicha = () => {
             <Button variant="forest-outline" onClick={shareWhatsApp}>
               Compartir en WhatsApp
             </Button>
+            {pdfUrl && (
+              <Button variant="outline" asChild>
+                <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
+                  <Download className="mr-2 h-4 w-4" /> Informe PDF
+                </a>
+              </Button>
+            )}
           </div>
         </>
       )}
