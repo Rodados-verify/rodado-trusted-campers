@@ -39,39 +39,84 @@ serve(async (req) => {
 
     const { marca, modelo, anio, km, precio_venta, provincia } = solicitud;
 
-    // Step 2 — Scrape via Apify
-    const searchQuery = `${marca} ${modelo}`.replace(/\s+/g, "+");
+    // Step 2 — Scrape via Apify (broad + specific queries across 3 platforms)
+    const fullQuery = `${marca} ${modelo}`.replace(/\s+/g, "+");
+    const brandOnly = marca.replace(/\s+/g, "+");
+    const tipo = "autocaravana camper";
+
+    // Primary URLs (specific) + fallback URLs (brand-only, broader)
     const startUrls = [
-      { url: `https://www.milanuncios.com/autocaravanas/?q=${searchQuery}&aniodesde=${anio - 2}&aniohasta=${anio + 2}` },
-      { url: `https://www.wallapop.com/app/search?keywords=${searchQuery}&category_ids=14000` },
-      { url: `https://www.coches.net/autocaravanas-y-remolques/?q=${searchQuery}` },
+      // Milanuncios — specific + broad
+      { url: `https://www.milanuncios.com/autocaravanas/?q=${fullQuery}&aniodesde=${anio - 3}&aniohasta=${anio + 3}` },
+      { url: `https://www.milanuncios.com/autocaravanas/?q=${brandOnly}&aniodesde=${anio - 4}&aniohasta=${anio + 4}` },
+      // Wallapop — specific + broad
+      { url: `https://www.wallapop.com/app/search?keywords=${fullQuery}&category_ids=14000` },
+      { url: `https://www.wallapop.com/app/search?keywords=${brandOnly}+${tipo.replace(/\s+/g, "+")}&category_ids=14000` },
+      // Coches.net — specific + broad
+      { url: `https://www.coches.net/autocaravanas-y-remolques/?q=${fullQuery}` },
+      { url: `https://www.coches.net/autocaravanas-y-remolques/?q=${brandOnly}` },
     ];
 
     const pageFunction = `async function pageFunction(context) {
-      const { $, request } = context;
+      const { $, request, log } = context;
       const items = [];
-      $('[data-testid="listing"], .ma-AdCard, .ma-AdCardV2, article, .vehicle-card, [class*="ItemCard"], [class*="ad-card"]').each((i, el) => {
+      
+      // Very broad selectors to catch any listing card across sites
+      const cardSelectors = [
+        '[data-testid="listing"]', '.ma-AdCard', '.ma-AdCardV2',
+        'article', '.vehicle-card', '[class*="ItemCard"]', '[class*="ad-card"]',
+        '[class*="AdCard"]', '[class*="listing"]', '[class*="Listing"]',
+        '.ad-list-item', '.list-item', '.product-card', '[class*="product"]',
+        '[class*="Result"]', '[class*="result"]', '.card', '[class*="Card"]'
+      ].join(', ');
+      
+      const titleSelectors = 'h2, h3, h4, .title, [class*="title"], [class*="Title"], [class*="name"], [class*="Name"]';
+      const priceSelectors = '[class*="price"], [class*="Price"], .precio, .price, [class*="amount"], [class*="Amount"]';
+      const kmSelectors = '[class*="km"], [class*="kilometer"], [class*="Km"], [class*="mileage"]';
+      const yearSelectors = '[class*="year"], [class*="anio"], [class*="Year"], [class*="date"]';
+      
+      $(cardSelectors).each((i, el) => {
+        if (i >= 30) return false; // Limit per page
         const $el = $(el);
-        const titulo = $el.find('h2, h3, .title, [class*="title"], [class*="Title"]').first().text().trim();
-        const precio = $el.find('[class*="price"], [class*="Price"], .precio, .price').first().text().trim();
-        const km = $el.find('[class*="km"], [class*="kilometer"]').first().text().trim();
-        const anio = $el.find('[class*="year"], [class*="anio"]').first().text().trim();
+        const titulo = $el.find(titleSelectors).first().text().trim();
+        const precio = $el.find(priceSelectors).first().text().trim();
+        const kmText = $el.find(kmSelectors).first().text().trim();
+        const anioText = $el.find(yearSelectors).first().text().trim();
         const href = $el.find('a').first().attr('href') || '';
+        
+        // Also try to extract year from title text
+        const yearFromTitle = titulo.match(/\\b(19|20)\\d{2}\\b/);
+        const finalAnio = anioText || (yearFromTitle ? yearFromTitle[0] : '');
+        
+        // Also try to extract km from title text  
+        const kmFromTitle = titulo.match(/(\\d[\\d.]+)\\s*km/i);
+        const finalKm = kmText || (kmFromTitle ? kmFromTitle[1] : '');
+        
         if (titulo && precio) {
           items.push({
             titulo,
             precio,
-            km,
-            anio,
+            km: finalKm,
+            anio: finalAnio,
             url: href.startsWith('http') ? href : request.url.split('/').slice(0, 3).join('/') + href,
             fuente: new URL(request.url).hostname.replace('www.', '').split('.')[0]
           });
         }
       });
+      
+      // If no cards found with structured selectors, try extracting from full page text
+      if (items.length === 0) {
+        log.info('No structured cards found, trying text extraction from: ' + request.url);
+        const bodyText = $('body').text();
+        const priceMatches = bodyText.match(/(\\d{1,3}[.,]\\d{3})\\s*€/g) || [];
+        log.info('Found ' + priceMatches.length + ' price-like patterns in page text');
+      }
+      
+      log.info('Scraped ' + items.length + ' items from ' + request.url);
       return items;
     }`;
 
-    console.log("Calling Apify web-scraper...");
+    console.log("Calling Apify web-scraper with", startUrls.length, "URLs...");
     const apifyResponse = await fetch(
       `https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}`,
       {
@@ -80,8 +125,10 @@ serve(async (req) => {
         body: JSON.stringify({
           startUrls,
           pageFunction,
-          maxRequestsPerCrawl: 15,
-          maxConcurrency: 3,
+          maxRequestsPerCrawl: 30,
+          maxConcurrency: 5,
+          useChrome: true, // Enable JS rendering for dynamic sites like Wallapop
+          waitUntil: "networkidle2",
         }),
       }
     );
@@ -99,20 +146,39 @@ serve(async (req) => {
 
     console.log(`Apify returned ${resultados.length} raw results`);
 
-    // Step 3 — Filter relevant results
-    const vehiculosFiltrados = resultados
+    // Step 3 — Filter relevant results (relaxed criteria)
+    // First pass: extract numeric price from all results
+    const parsedResults = resultados.map((v: any) => ({
+      ...v,
+      _precioNum: parseInt(String(v.precio).replace(/\D/g, "")) || 0,
+      _kmNum: parseInt(String(v.km).replace(/[.\s]/g, "").replace(/\D/g, "")) || 0,
+      _anioNum: parseInt(String(v.anio).match(/\d{4}/)?.[0] || "0") || 0,
+    }));
+
+    // Relaxed filter: only require a valid price in reasonable range
+    let vehiculosFiltrados = parsedResults
       .filter((v: any) => {
-        const precioNum = parseInt(String(v.precio).replace(/\D/g, ""));
-        const kmNum = parseInt(String(v.km).replace(/\D/g, "")) || 0;
-        const anioNum = parseInt(String(v.anio)) || 0;
         return (
-          precioNum > 5000 &&
-          precioNum < 200000 &&
-          (anioNum === 0 || Math.abs(anioNum - anio) <= 3) &&
-          (kmNum === 0 || kmNum < km * 2)
+          v._precioNum >= 3000 &&
+          v._precioNum <= 300000 &&
+          // If year is detected, allow wide range (±5 years); otherwise keep it
+          (v._anioNum === 0 || Math.abs(v._anioNum - anio) <= 5) &&
+          // If km is detected, allow generous range; otherwise keep it
+          (v._kmNum === 0 || v._kmNum < (km || 500000) * 3)
         );
       })
-      .slice(0, 15);
+      .slice(0, 20);
+
+    console.log(`Filtered to ${vehiculosFiltrados.length} comparable vehicles`);
+
+    // If still not enough, use ALL results with valid prices as fallback
+    if (vehiculosFiltrados.length < 3) {
+      console.log("Not enough after filtering, using all results with valid prices...");
+      vehiculosFiltrados = parsedResults
+        .filter((v: any) => v._precioNum >= 3000 && v._precioNum <= 300000)
+        .slice(0, 20);
+      console.log(`Fallback: ${vehiculosFiltrados.length} vehicles with valid prices`);
+    }
 
     console.log(`Filtered to ${vehiculosFiltrados.length} comparable vehicles`);
 
