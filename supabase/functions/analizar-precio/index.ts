@@ -246,10 +246,12 @@ serve(async (req) => {
     // 2) Discover direct listing URLs from search index (more robust against blocked search pages)
     const searchQueries = [
       `site:milanuncios.com/autocaravanas-de-segunda-mano "${marca} ${modelo}"`,
-      `site:milanuncios.com/autocaravanas-de-segunda-mano "${marca} ${modelo} ${anio}"`,
+      `site:milanuncios.com "${marca} ${modelo} camper"`,
+      `site:milanuncios.com "${marca} ${modelo} ${anio}"`,
       `site:wallapop.com/item "${marca} ${modelo}" camper`,
       `site:wallapop.com/item "${marca} ${modelo} ${anio}"`,
       `site:coches.net "${marca} ${modelo}" (arvo.aspx OR covo.aspx OR fuvivo.aspx)`,
+      `site:coches.net "${marca} ${modelo} camper" (arvo.aspx OR covo.aspx OR fuvivo.aspx)`,
       `site:coches.net "${marca} ${modelo} ${anio}" (arvo.aspx OR covo.aspx OR fuvivo.aspx)`,
     ];
 
