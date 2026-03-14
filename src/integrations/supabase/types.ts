@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      analisis_precio: {
+        Row: {
+          analisis: string | null
+          comparables: Json | null
+          consejo: string | null
+          created_at: string | null
+          diferencia_porcentaje: number | null
+          id: string
+          num_comparables: number | null
+          precio_medio_mercado: number | null
+          precio_recomendado_max: number | null
+          precio_recomendado_min: number | null
+          solicitud_id: string
+          veredicto: string | null
+        }
+        Insert: {
+          analisis?: string | null
+          comparables?: Json | null
+          consejo?: string | null
+          created_at?: string | null
+          diferencia_porcentaje?: number | null
+          id?: string
+          num_comparables?: number | null
+          precio_medio_mercado?: number | null
+          precio_recomendado_max?: number | null
+          precio_recomendado_min?: number | null
+          solicitud_id: string
+          veredicto?: string | null
+        }
+        Update: {
+          analisis?: string | null
+          comparables?: Json | null
+          consejo?: string | null
+          created_at?: string | null
+          diferencia_porcentaje?: number | null
+          id?: string
+          num_comparables?: number | null
+          precio_medio_mercado?: number | null
+          precio_recomendado_max?: number | null
+          precio_recomendado_min?: number | null
+          solicitud_id?: string
+          veredicto?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analisis_precio_solicitud_id_fkey"
+            columns: ["solicitud_id"]
+            isOneToOne: false
+            referencedRelation: "solicitudes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checklist_items: {
         Row: {
           created_at: string
