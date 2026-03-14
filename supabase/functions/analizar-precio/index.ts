@@ -212,6 +212,7 @@ const scrapeListingUrlsFromPlatform = async (
   } catch { /* skip */ }
 
   return [...new Set(urls)];
+};
 
 
 const fetchComparableFromListing = async (
