@@ -745,6 +745,7 @@ export type Database = {
         Args: { _solicitud_id: string }
         Returns: boolean
       }
+      is_taller_of_published: { Args: { _taller_id: string }; Returns: boolean }
       is_vendedor_of_published: {
         Args: { _usuario_id: string }
         Returns: boolean
