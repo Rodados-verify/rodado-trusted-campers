@@ -550,6 +550,38 @@ const InspeccionForm = ({ solicitudId, tallerId, onComplete }: InspeccionFormPro
           </AccordionContent>
         </AccordionItem>
 
+        {/* ═══ FOTOS DE DESPERFECTOS ═══ */}
+        <AccordionItem value="desperfectos" className="rounded-xl border border-border bg-white overflow-hidden">
+          <AccordionTrigger className="px-5 py-4 hover:no-underline">
+            <SectionHeader number={0} title="📷 Fotos de desperfectos" saved={data.fotos_desperfectos_urls.length > 0} />
+          </AccordionTrigger>
+          <AccordionContent className="px-5 pb-5 space-y-4">
+            <p className="text-xs text-muted-foreground">Sube fotos de todos los desperfectos, golpes, arañazos u oxidaciones que hayas localizado. Se mostrarán en la ficha pública para total transparencia.</p>
+            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-yellow-400/40 bg-yellow-50/30 p-4 hover:border-yellow-400/60 transition-colors">
+              <Camera className="h-5 w-5 text-yellow-600" />
+              <span className="text-xs text-muted-foreground">Subir fotos de desperfectos</span>
+              <input type="file" accept="image/*" multiple className="hidden" onChange={e => {
+                const files = Array.from(e.target.files || []);
+                if (files.length > 0) uploadDefectPhotos(files);
+              }} />
+            </label>
+            {data.fotos_desperfectos_urls.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {data.fotos_desperfectos_urls.map((url, i) => (
+                  <div key={i} className="relative aspect-[4/3] overflow-hidden rounded-lg border border-yellow-300">
+                    <img src={url} alt={`Desperfecto ${i + 1}`} className="h-full w-full object-cover" />
+                    <button type="button" onClick={() => update("fotos_desperfectos_urls", data.fotos_desperfectos_urls.filter((_, j) => j !== i))}
+                      className="absolute top-1 right-1 rounded-full bg-black/50 p-1 text-white hover:bg-black/70">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <SaveButton section="desperfectos" saving={saving} onClick={() => saveSection("Desperfectos")} />
+          </AccordionContent>
+        </AccordionItem>
+
         {/* ═══ SECCIÓN 5: HABITÁCULO CAMPER ═══ */}
         <AccordionItem value="habitaculo" className="rounded-xl border border-border bg-white overflow-hidden">
           <AccordionTrigger className="px-5 py-4 hover:no-underline">
