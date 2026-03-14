@@ -43,14 +43,14 @@ const VendedorFicha = () => {
 
   const copyLink = () => {
     if (fichaSlug) {
-      navigator.clipboard.writeText(`${window.location.origin}/ficha/${fichaSlug}`);
+      navigator.clipboard.writeText(`${window.location.origin}/vehiculo/${fichaSlug}`);
       toast({ title: "Enlace copiado" });
     }
   };
 
   const shareWhatsApp = () => {
     if (fichaSlug) {
-      const url = `${window.location.origin}/ficha/${fichaSlug}`;
+      const url = `${window.location.origin}/vehiculo/${fichaSlug}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(`Echa un vistazo a mi camper verificado por Rodado: ${url}`)}`, "_blank");
     }
   };
@@ -95,7 +95,7 @@ const VendedorFicha = () => {
         <>
           <div className="overflow-hidden rounded-xl border border-border bg-white">
             <iframe
-              src={`/ficha/${fichaSlug}`}
+              src={`/vehiculo/${fichaSlug}`}
               className="h-[600px] w-full border-0"
               title="Mi ficha Rodado"
             />
@@ -103,7 +103,7 @@ const VendedorFicha = () => {
 
           <div className="flex flex-wrap gap-3">
             <Button variant="ocre" asChild>
-              <a href={`/ficha/${fichaSlug}`} target="_blank" rel="noopener noreferrer">
+              <a href={`/vehiculo/${fichaSlug}`} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="mr-2 h-4 w-4" /> Abrir en nueva pestaña
               </a>
             </Button>
