@@ -114,6 +114,9 @@ const VendedorLayout = ({ children }: { children: ReactNode }) => {
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
+                {"badge" in item && (item as any).badge && (
+                  <span className="ml-auto h-2 w-2 rounded-full bg-green-400" />
+                )}
               </Link>
             );
           })}
