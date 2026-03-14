@@ -80,7 +80,7 @@ serve(async (req) => {
         const cardText = $el.text().replace(/\s+/g, ' ').trim();
 
         const tituloRaw = $el.find(titleSelectors).first().text().trim();
-        const titulo = tituloRaw || cardText.slice(0, 90) || `Anuncio \${i + 1}`;
+        const titulo = tituloRaw || cardText.slice(0, 90) || ('Anuncio ' + (i + 1));
 
         const priceText = $el.find(priceSelectors).first().text().trim();
         const precioDigits = extractPriceDigits(priceText) || extractPriceDigits(cardText);
