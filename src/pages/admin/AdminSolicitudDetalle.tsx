@@ -379,6 +379,12 @@ const AdminSolicitudDetalle = () => {
         <h3 className="font-display text-lg font-semibold">Contenido y publicación</h3>
 
         {/* Generate content button */}
+        {solicitud.estado !== "publicado" && !inspeccionCompleta && (
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+            ⏳ La inspección del taller aún no se ha completado. Los botones de generar contenido y publicar estarán disponibles cuando el taller envíe su verificación.
+          </div>
+        )}
+
         {solicitud.estado !== "publicado" && (
           <Button
             variant="ocre"
