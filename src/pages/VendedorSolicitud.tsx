@@ -84,7 +84,7 @@ const VendedorSolicitud = () => {
 
   const copyLink = () => {
     if (fichaSlug) {
-      navigator.clipboard.writeText(`${window.location.origin}/ficha/${fichaSlug}`);
+      navigator.clipboard.writeText(`${window.location.origin}/vehiculo/${fichaSlug}`);
       toast({ title: "Enlace copiado" });
     }
   };
@@ -136,7 +136,7 @@ const VendedorSolicitud = () => {
           {solicitud.estado === "publicado" && fichaSlug && (
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Button variant="ocre" size="lg" asChild>
-                <a href={`/ficha/${fichaSlug}`} target="_blank" rel="noopener noreferrer">
+                <a href={`/vehiculo/${fichaSlug}`} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="mr-2 h-4 w-4" /> Ver mi ficha
                 </a>
               </Button>
