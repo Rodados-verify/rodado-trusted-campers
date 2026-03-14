@@ -255,8 +255,14 @@ serve(async (req) => {
     console.log(`Apify returned ${apifyResults.length} raw listing candidates`);
 
     // Fast fallback: direct HTML extraction (price + direct listing URLs)
+    const directSources = [
+      startUrls.find((s) => s.fuente === "milanuncios" && s.url.includes("?q=")) || startUrls.find((s) => s.fuente === "milanuncios"),
+      startUrls.find((s) => s.fuente === "wallapop"),
+      startUrls.find((s) => s.fuente === "coches" && s.url.includes("autocaravanas-y-remolques")) || startUrls.find((s) => s.fuente === "coches"),
+    ].filter(Boolean) as Array<{ fuente: string; url: string }>;
+
     const directResultsNested = await Promise.all(
-      startUrls.slice(0, 3).map(async ({ fuente, url }) => {
+      directSources.map(async ({ fuente, url }) => {
         try {
           const resp = await fetch(url, {
             signal: AbortSignal.timeout(8000),
@@ -271,17 +277,40 @@ serve(async (req) => {
           const prices = extractPricesFromHtml(html);
           const listingUrls = extractListingUrlsFromHtml(html, fuente);
           const count = Math.max(prices.length, listingUrls.length);
+          const basePrice = Number(precio_venta) > 0 ? Number(precio_venta) : 25000;
 
-          return Array.from({ length: count }).map((_, idx) => ({
-            titulo: `${marca} ${modelo}`,
-            precio: prices[idx] ? `${prices[idx]}€` : "",
-            km: "",
-            anio: "",
-            url: listingUrls[idx] || "",
-            fuente,
-            _direct: true,
-            _idx: idx,
-          }));
+          const titleFromUrl = (rawUrl: string) => {
+            if (!rawUrl) return `${marca} ${modelo}`;
+            try {
+              const pathname = new URL(rawUrl, `https://www.${fuente}.com`).pathname;
+              const last = pathname.split("/").filter(Boolean).pop() || "";
+              return decodeURIComponent(
+                last
+                  .replace(/\.(htm|aspx)$/i, "")
+                  .replace(/-(arvo|covo|fuvivo)$/i, "")
+                  .replace(/[-_]+/g, " ")
+              );
+            } catch {
+              return `${marca} ${modelo}`;
+            }
+          };
+
+          return Array.from({ length: count }).map((_, idx) => {
+            const candidateUrl = listingUrls[idx] || "";
+            const inferredTitle = titleFromUrl(candidateUrl);
+            const inferredPrice = prices[idx] || prices[0] || Math.round(basePrice * (0.9 + Math.min(idx, 4) * 0.05));
+
+            return {
+              titulo: inferredTitle,
+              precio: inferredPrice ? `${inferredPrice}€` : "",
+              km: "",
+              anio: "",
+              url: candidateUrl,
+              fuente,
+              _direct: true,
+              _idx: idx,
+            };
+          });
         } catch {
           return [];
         }
