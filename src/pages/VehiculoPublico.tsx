@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { SelloRodado } from "@/components/SelloRodado";
-import { VehiculoGallery } from "@/components/vehiculo/VehiculoGallery";
+import { VehiculoGallery, type Photo, type PhotoCategory } from "@/components/vehiculo/VehiculoGallery";
 import { VehiculoContactModal } from "@/components/vehiculo/VehiculoContactModal";
 import { VehiculoInspeccion } from "@/components/vehiculo/VehiculoInspeccion";
 import { Button } from "@/components/ui/button";
