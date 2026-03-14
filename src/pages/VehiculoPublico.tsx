@@ -13,10 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface Photo {
-  id: string;
-  publicUrl: string;
-}
+// Photo type is imported from VehiculoGallery as GalleryPhoto
 
 const VehiculoPublico = () => {
   const { slug } = useParams<{ slug: string }>();
