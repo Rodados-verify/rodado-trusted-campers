@@ -19,6 +19,30 @@ const VendedorLayout = ({ children }: { children: ReactNode }) => {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const isMobile = useIsMobile();
+  const [isPublicado, setIsPublicado] = useState(false);
+
+  useEffect(() => {
+    const check = async () => {
+      if (!user) return;
+      const { data: usuario } = await supabase
+        .from("usuarios")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+      if (!usuario) return;
+      const { data: sol } = await supabase
+        .from("solicitudes")
+        .select("estado")
+        .eq("vendedor_id", usuario.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setIsPublicado(sol?.estado === "publicado");
+    };
+    check();
+  }, [user]);
+
+  const navItems = isPublicado ? [...baseNavItems.slice(0, 3), kitNavItem, baseNavItems[3]] : baseNavItems;
 
   const isActive = (path: string) => {
     if (path === "/vendedor") return location.pathname === "/vendedor";
