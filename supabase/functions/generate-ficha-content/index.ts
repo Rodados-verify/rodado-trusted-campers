@@ -63,32 +63,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    const prompt = `Eres un redactor experto en vehículos de segunda mano para la plataforma Rodado, especializada en autocaravanas, campers y furgonetas camperizadas. Genera una descripción atractiva y profesional para la ficha de venta pública de este vehículo.
+    const prompt = `Eres un redactor especializado en venta de autocaravanas y vehículos camper de ocasión.
+Escribe una descripción de venta profesional, persuasiva y honesta para el siguiente vehículo.
+La descripción debe tener entre 200 y 300 palabras, estar en español, destacar los puntos fuertes
+del vehículo, mencionar el equipamiento más relevante y transmitir confianza al comprador.
+No menciones precios. No uses lenguaje exagerado. Escribe en tercera persona sobre el vehículo.
+Empieza directamente con la descripción, sin títulos.
 
-DATOS DEL VEHÍCULO:
-- Tipo: ${sol.tipo_vehiculo}
-- Marca: ${sol.marca}
-- Modelo: ${sol.modelo}
+Datos del vehículo:
+- Marca y modelo: ${sol.marca} ${sol.modelo}
 - Año: ${sol.anio}
 - Kilómetros: ${sol.km?.toLocaleString("es-ES")} km
+- Tipo: ${sol.tipo_vehiculo}
 - Provincia: ${sol.provincia}
-- Precio orientativo: ${sol.precio_venta ? Number(sol.precio_venta).toLocaleString("es-ES") + " €" : "No indicado"}
-- Transporte incluido: ${sol.incluye_transporte ? "Sí" : "No"}
-${sol.descripcion ? `- Descripción del vendedor: ${sol.descripcion}` : ""}
+${sol.descripcion ? `- Descripción del propietario: ${sol.descripcion}` : ""}
+${informe?.puntos_positivos ? `- Equipamiento destacado por el taller: ${informe.puntos_positivos}` : ""}
+${informe?.observaciones_generales ? `- Observaciones del taller: ${informe.observaciones_generales}` : ""}
 
-RESULTADO DE INSPECCIÓN PROFESIONAL:${checklistSummary}
-${informe?.observaciones_generales ? `\nObservaciones generales del taller: ${informe.observaciones_generales}` : ""}
-${informe?.puntos_positivos ? `\nPuntos destacados: ${informe.puntos_positivos}` : ""}
-
-INSTRUCCIONES:
-- Escribe en español, tono profesional pero cercano
-- Destaca los puntos positivos del informe de inspección
-- Menciona que ha sido inspeccionado por un taller verificado de la red Rodado
-- Si hay observaciones, menciónalas de forma transparente pero constructiva
-- No inventes datos que no estén en la información proporcionada
-- Extensión: 150-300 palabras
-- No incluyas el precio ni datos ya visibles en la ficha (marca, modelo, año, km)
-- Empieza directamente con la descripción, sin títulos`;
+Resultado de inspección profesional:${checklistSummary}`;
 
     // Call Lovable AI
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
