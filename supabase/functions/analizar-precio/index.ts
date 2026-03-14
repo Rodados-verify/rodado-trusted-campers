@@ -74,16 +74,26 @@ const isDirectListingUrl = (url: string, fuente: Fuente): boolean => {
   if (!u.startsWith("http")) return false;
 
   if (fuente === "wallapop") {
-    const isValidHost = u.includes("es.wallapop.com") || u.includes("www.wallapop.com");
+    const isValidHost = u.includes("es.wallapop.com") || u.includes("www.wallapop.com") || u.includes("wallapop.com");
     return isValidHost && /\/item\//.test(u) && !u.includes("/app/search");
   }
 
   if (fuente === "coches") {
-    return /-(arvo|covo|fuvivo)\.aspx(\?|$)/.test(u);
+    // coches.net listing URLs contain numeric IDs and end with .aspx or have /segunda-mano/ paths
+    return (
+      (u.includes("coches.net/") && /\.aspx/.test(u)) ||
+      (u.includes("coches.net/") && /\/\d{5,}/.test(u) && !u.includes("/buscar"))
+    );
   }
 
   if (fuente === "milanuncios") {
-    return u.endsWith(".htm") && !u.includes("?q=") && !u.includes("/busqueda");
+    // milanuncios.com listing URLs end in .htm or contain numeric listing IDs
+    return (
+      (u.endsWith(".htm") || /\/\d{8,}/.test(u) || /-\d{6,}\.htm/.test(u)) &&
+      !u.includes("?q=") &&
+      !u.includes("/busqueda") &&
+      !u.includes("/listado")
+    );
   }
 
   return false;
