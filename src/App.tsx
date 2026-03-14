@@ -53,6 +53,7 @@ const App = () => (
             {/* Vendedor */}
             <Route path="/vendedor" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorDashboard /></ProtectedRoute>} />
             <Route path="/vendedor/ficha" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorFichaPage /></ProtectedRoute>} />
+            <Route path="/vendedor/precio" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorAnalisisPrecioPage /></ProtectedRoute>} />
             <Route path="/vendedor/cuenta" element={<ProtectedRoute allowedRoles={["vendedor"]}><VendedorCuentaPage /></ProtectedRoute>} />
 
             {/* Taller */}

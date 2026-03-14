@@ -1,13 +1,14 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { FileText, Globe, User, LogOut } from "lucide-react";
+import { FileText, Globe, User, LogOut, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const navItems = [
   { label: "Mi solicitud", path: "/vendedor", icon: FileText },
   { label: "Mi ficha", path: "/vendedor/ficha", icon: Globe },
+  { label: "Analizar precio", path: "/vendedor/precio", icon: TrendingUp },
   { label: "Mi cuenta", path: "/vendedor/cuenta", icon: User },
 ];
 
