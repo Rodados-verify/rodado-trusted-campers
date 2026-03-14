@@ -284,10 +284,10 @@ Responde SOLO en JSON con este formato exacto:
     const comparables = vehiculosFiltrados.map((v: any) => ({
       titulo: v.titulo,
       precio: v._precioNum,
-      km: v.km || v._kmNum ? `${v._kmNum} km` : "",
+      km: v.km || (v._kmNum ? `${v._kmNum} km` : ""),
       anio: v.anio || (v._anioNum ? String(v._anioNum) : ""),
       url: v.url,
-      fuente: v.fuente,
+      fuente: String(v.fuente || "").toLowerCase(),
     }));
 
     // Step 5 — Save to database
