@@ -22,12 +22,12 @@ const packItems = [
   {
     num: "05",
     title: "Ficha propia enlazable",
-    desc: "URL única con toda la información, lista para compartir en cualquier plataforma de compraventa.",
+    desc: "Una URL única con toda la información verificada del vehículo. Compártela en Wallapop, Milanuncios, Facebook, grupos de campers o por WhatsApp. El comprador llega con toda la información — sin que tengas que explicar nada cada vez.",
   },
   {
     num: "06",
     title: "Transporte a domicilio opcional",
-    desc: "Si el comprador es de otra ciudad, gestionamos el traslado del vehículo hasta su puerta.",
+    desc: "Si el comprador ideal está en otra ciudad, no dejes que la logística arruine la venta. Gestionamos el traslado del vehículo a cualquier punto de España. El comprador no viaja. Tú no te complicas. La venta se cierra.",
   },
 ];
 
