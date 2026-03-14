@@ -117,31 +117,47 @@ serve(async (req) => {
     }`;
 
     console.log("Calling Apify web-scraper with", startUrls.length, "URLs...");
-    const apifyResponse = await fetch(
-      `https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}`,
-      {
+    const apifyEndpoint = `https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}`;
+
+    const apifyPrimaryPayload = {
+      startUrls,
+      pageFunction,
+      maxRequestsPerCrawl: 30,
+      maxConcurrency: 5,
+      useChrome: true, // Enable JS rendering for dynamic sites like Wallapop
+      waitUntil: ["networkidle2"], // Apify expects an array
+    };
+
+    const apifyFallbackPayload = {
+      startUrls,
+      pageFunction,
+      maxRequestsPerCrawl: 20,
+      maxConcurrency: 3,
+      // Keep payload minimal to avoid actor input validation issues
+    };
+
+    console.log("Calling Apify web-scraper with", startUrls.length, "URLs...");
+
+    let apifyResponse = await fetch(apifyEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(apifyPrimaryPayload),
+    });
+
+    if (!apifyResponse.ok) {
+      const firstError = await apifyResponse.text();
+      console.error("Apify primary call error:", apifyResponse.status, firstError);
+      console.log("Retrying Apify with fallback payload...");
+
+      apifyResponse = await fetch(apifyEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startUrls,
-          pageFunction,
-          maxRequestsPerCrawl: 30,
-          maxConcurrency: 5,
-          useChrome: true, // Enable JS rendering for dynamic sites like Wallapop
-          waitUntil: "networkidle2",
-        }),
-      }
-    );
+        body: JSON.stringify(apifyFallbackPayload),
+      });
 
-    let resultados: any[] = [];
-    if (apifyResponse.ok) {
-      resultados = await apifyResponse.json();
-      // Flatten if nested arrays
-      if (Array.isArray(resultados) && resultados.length > 0 && Array.isArray(resultados[0])) {
-        resultados = resultados.flat();
+      if (!apifyResponse.ok) {
+        console.error("Apify fallback call error:", apifyResponse.status, await apifyResponse.text());
       }
-    } else {
-      console.error("Apify error:", apifyResponse.status, await apifyResponse.text());
     }
 
     console.log(`Apify returned ${resultados.length} raw results`);
