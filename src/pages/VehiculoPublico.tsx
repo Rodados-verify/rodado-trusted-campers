@@ -343,7 +343,7 @@ const VehiculoPublico = () => {
             )}
 
             {/* Inspection report */}
-            <VehiculoInspeccion checklistItems={checklistItems} informe={informe} inspeccion={inspeccion} />
+            <VehiculoInspeccion checklistItems={checklistItems} informe={informe} inspeccion={inspeccion} fotosDesperfectos={inspeccion?.fotos_desperfectos_urls || []} />
           </div>
 
           {/* Right 38% sticky desktop */}
