@@ -119,7 +119,17 @@ const extractTitle = (html: string): string => {
   return "Vehículo similar";
 };
 
-const runGoogleSearch = async (apifyToken: string, queries: string[]): Promise<string[]> => {
+type GoogleOrganicResult = {
+  url?: string;
+  link?: string;
+  title?: string;
+  description?: string;
+};
+
+const runGoogleSearch = async (
+  apifyToken: string,
+  queries: string[],
+): Promise<{ urls: string[]; organicResults: GoogleOrganicResult[] }> => {
   const endpoint = `https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=${apifyToken}`;
 
   const response = await fetch(endpoint, {
@@ -142,17 +152,84 @@ const runGoogleSearch = async (apifyToken: string, queries: string[]): Promise<s
   const data = await response.json();
   const rows = Array.isArray(data) ? data : [];
 
-  const urls = rows.flatMap((row: any) => {
-    const fromOrganic = Array.isArray(row?.organicResults)
-      ? row.organicResults.map((r: any) => r?.url || r?.link).filter(Boolean)
-      : [];
+  const allOrganics: GoogleOrganicResult[] = [];
+  const urls: string[] = [];
 
-    const fromRow = [row?.url, row?.link].filter(Boolean);
+  for (const row of rows) {
+    if (Array.isArray(row?.organicResults)) {
+      for (const r of row.organicResults) {
+        const url = r?.url || r?.link;
+        if (url) {
+          urls.push(String(url).trim());
+          allOrganics.push({
+            url: String(url).trim(),
+            title: r?.title || "",
+            description: r?.description || r?.snippet || "",
+          });
+        }
+      }
+    }
+  }
 
-    return [...fromOrganic, ...fromRow];
-  });
+  return { urls: [...new Set(urls)], organicResults: allOrganics };
+};
 
-  return [...new Set(urls.map((u: unknown) => String(u || "").trim()).filter(Boolean))];
+// Extract comparable data from Google search snippets (for JS-rendered sites)
+const extractComparableFromSnippet = (
+  result: GoogleOrganicResult,
+  marcaTokens: string[],
+  modeloTokens: string[],
+  targetYear: number,
+  targetKm: number,
+): ComparableCandidate | null => {
+  const url = result.url || "";
+  const fuente = detectFuenteFromUrl(url);
+  if (!fuente) return null;
+
+  const text = `${result.title || ""} ${result.description || ""}`;
+  const relevanceText = normalizeText(text);
+
+  const hasMarca = marcaTokens.some((t) => relevanceText.includes(t));
+  const modelMatches = modeloTokens.filter((t) => relevanceText.includes(t)).length;
+  if (!hasMarca || modelMatches === 0) return null;
+
+  // Extract price from snippet (Google often shows "12.000 €" or "12.000€" in snippets)
+  const priceMatches = [...text.matchAll(/(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*€/gi)]
+    .map((m) => parseNumeric(m[1]))
+    .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+  
+  // Also try "EUR" and "euros"
+  const priceMatches2 = [...text.matchAll(/(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*(eur|euros)\b/gi)]
+    .map((m) => parseNumeric(m[1]))
+    .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+
+  const prices = [...new Set([...priceMatches, ...priceMatches2])];
+  const price = prices[0] || 0;
+  if (!price) return null;
+
+  const yearNum = extractYear(text);
+  const kmNum = extractKm(text);
+
+  if (yearNum > 0 && Math.abs(yearNum - targetYear) > 8) return null;
+  if (kmNum > 0 && kmNum > Math.max(targetKm * 2.3, 360000)) return null;
+
+  const score =
+    modelMatches * 2 +
+    (yearNum > 0 ? Math.max(0, 3 - Math.abs(yearNum - targetYear)) : 0) +
+    (kmNum > 0 ? 1 : 0) +
+    1;
+
+  return {
+    titulo: result.title || "Vehículo similar",
+    precio: price,
+    km: kmNum ? `${kmNum.toLocaleString("es-ES")} km` : "",
+    anio: yearNum ? String(yearNum) : "",
+    url,
+    fuente,
+    _yearNum: yearNum,
+    _kmNum: kmNum,
+    _score: score,
+  };
 };
 
 // Scrape listing URLs from platform category/search pages
