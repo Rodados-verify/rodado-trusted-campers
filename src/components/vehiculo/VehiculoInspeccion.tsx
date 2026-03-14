@@ -188,6 +188,24 @@ export const VehiculoInspeccion = ({ checklistItems, informe, inspeccion, fotosD
         </div>
       )}
 
+      {/* Fotos de desperfectos */}
+      {fotosDesperfectos.length > 0 && (
+        <div className="rounded-xl border border-yellow-200 bg-yellow-50/50 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <h4 className="font-display text-base font-semibold text-yellow-800">Desperfectos detectados</h4>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">Fotos tomadas por el verificador durante la inspección.</p>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
+            {fotosDesperfectos.map((url, i) => (
+              <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="aspect-[4/3] overflow-hidden rounded-lg border border-yellow-200 hover:opacity-90 transition-opacity">
+                <img src={url} alt={`Desperfecto ${i + 1}`} className="h-full w-full object-cover" />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* PDF download */}
       {informe?.url_pdf && (
         <a href={informe.url_pdf} target="_blank" rel="noopener noreferrer"
