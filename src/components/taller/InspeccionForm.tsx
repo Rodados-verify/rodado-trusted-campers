@@ -815,17 +815,6 @@ const InspeccionForm = ({ solicitudId, tallerId, onComplete }: InspeccionFormPro
                 <Label className="text-sm">Cargas o embargos</Label>
               </div>
             </div>
-            <div>
-              <Label className="text-sm">Informe PDF (opcional)</Label>
-              <div className="mt-1.5 flex items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted/30 transition-colors">
-                  <FileText className="h-4 w-4" />
-                  <span>{pdfFile ? pdfFile.name : "Seleccionar PDF"}</span>
-                  <input type="file" accept=".pdf" className="hidden" onChange={e => setPdfFile(e.target.files?.[0] || null)} />
-                </label>
-                {pdfFile && <button type="button" onClick={() => setPdfFile(null)} className="text-xs text-muted-foreground hover:text-destructive">Quitar</button>}
-              </div>
-            </div>
             <SaveButton section="documentacion" saving={saving} onClick={() => saveSection("Documentación")} />
           </AccordionContent>
         </AccordionItem>
