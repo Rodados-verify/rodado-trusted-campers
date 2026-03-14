@@ -267,9 +267,9 @@ Responde SOLO en JSON con este formato exacto:
     // Prepare comparables with parsed numeric values
     const comparables = vehiculosFiltrados.map((v: any) => ({
       titulo: v.titulo,
-      precio: parseInt(String(v.precio).replace(/\D/g, "")),
-      km: v.km,
-      anio: v.anio,
+      precio: v._precioNum,
+      km: v.km || v._kmNum ? `${v._kmNum} km` : "",
+      anio: v.anio || (v._anioNum ? String(v._anioNum) : ""),
       url: v.url,
       fuente: v.fuente,
     }));
