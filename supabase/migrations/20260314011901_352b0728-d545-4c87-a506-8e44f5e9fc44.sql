@@ -1,0 +1,1 @@
+ALTER TABLE public.inspeccion_detalle ADD COLUMN fotos_desperfectos_urls text[] DEFAULT '{}'::text[];
