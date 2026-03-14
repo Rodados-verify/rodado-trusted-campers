@@ -344,7 +344,7 @@ serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            queries: searchQueries.map((q) => q.query),
+            queries: searchQueries.map((q) => q.query).join("\n"),
             maxPagesPerQuery: 1,
             resultsPerPage: 10,
             languageCode: "es",
