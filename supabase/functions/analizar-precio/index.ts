@@ -142,8 +142,8 @@ serve(async (req) => {
     const apifyPrimaryPayload = {
       startUrls,
       pageFunction,
-      maxRequestsPerCrawl: 30,
-      maxConcurrency: 5,
+      maxRequestsPerCrawl: 12,
+      maxConcurrency: 3,
       useChrome: true, // Enable JS rendering for dynamic sites like Wallapop
       waitUntil: ["networkidle2"], // Apify expects an array
     };
