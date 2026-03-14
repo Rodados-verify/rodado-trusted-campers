@@ -348,21 +348,23 @@ serve(async (req) => {
       `site:coches.net "${marca} ${modelo}" segunda mano`,
     ];
 
-    // Run Google search and direct platform scraping in parallel
+    // First run Google search, then use results + direct scraping
     let discoveredUrls: string[] = [];
     try {
-      const [googleUrls, platformUrls] = await Promise.all([
-        runGoogleSearch(APIFY_TOKEN, searchQueries).catch((err) => {
-          console.error("Google search error:", err);
-          return [] as string[];
-        }),
-        scrapeListingUrlsFromPlatform(marca, modelo).catch((err) => {
-          console.error("Platform scraping error:", err);
-          return [] as string[];
-        }),
-      ]);
+      const googleUrls = await runGoogleSearch(APIFY_TOKEN, searchQueries).catch((err) => {
+        console.error("Google search error:", err);
+        return [] as string[];
+      });
+      console.log(`Google found ${googleUrls.length} URLs`);
+
+      // Now scrape category pages found by Google + direct platform search
+      const platformUrls = await scrapeListingUrlsFromPlatform(marca, modelo, googleUrls).catch((err) => {
+        console.error("Platform scraping error:", err);
+        return [] as string[];
+      });
+
       discoveredUrls = [...googleUrls, ...platformUrls];
-      console.log(`Google: ${googleUrls.length} URLs, Platform scraping: ${platformUrls.length} URLs`);
+      console.log(`Total: ${discoveredUrls.length} URLs (Google: ${googleUrls.length}, Platform: ${platformUrls.length})`);
     } catch (err) {
       console.error("Search discovery error:", err);
     }
