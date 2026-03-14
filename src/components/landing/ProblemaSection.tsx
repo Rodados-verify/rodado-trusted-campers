@@ -14,6 +14,9 @@ export const ProblemaSection = () => (
             <span className="font-semibold text-foreground">5.000 y 15.000 €</span> respecto al precio de mercado.
             Si vendes tú mismo sin una presentación profesional, puedes tardar meses y acabar bajando el precio igualmente.
           </p>
+          <p className="text-base md:text-lg text-muted-foreground leading-relaxed font-body mt-4">
+            Y si vendes por tu cuenta sin preparación, el problema no es solo el precio — es el tiempo. Coordinar visitas, responder las mismas preguntas una y otra vez, recibir ofertas de gente que ni siquiera ha visto el vehículo bien. Semanas o meses perdidos.
+          </p>
         </div>
         <div>
           <p className="text-base md:text-lg text-foreground leading-relaxed font-body">

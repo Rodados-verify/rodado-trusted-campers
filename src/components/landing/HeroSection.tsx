@@ -6,6 +6,7 @@ import { SelloRodado } from "@/components/SelloRodado";
 const differentiators = [
   "No compramos tu camper. Tú vendes directamente al comprador.",
   "Sin comisiones. Sin cesión de margen. Precio fijo por el servicio.",
+  "Publicas en Wallapop, Milanuncios, grupos de Facebook o donde quieras. Tú controlas tu venta.",
   "Tu ficha con sello Rodado genera la confianza que cierra la venta.",
 ];
 
