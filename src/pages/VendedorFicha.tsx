@@ -60,6 +60,31 @@ const VendedorFicha = () => {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    if (!pdfUrl || downloadingPdf) return;
+
+    setDownloadingPdf(true);
+    try {
+      const filePath = pdfUrl.split("/informes-pdf/")[1] ?? "";
+      const { data, error } = await supabase.storage.from("informes-pdf").download(filePath);
+
+      if (error || !data) throw error || new Error("No se pudo descargar el PDF");
+
+      const blobUrl = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `informe-inspeccion-${fichaSlug || "rodado"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(pdfUrl, "_blank", "noopener,noreferrer");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-20"><p className="text-muted-foreground">Cargando…</p></div>;
   }
