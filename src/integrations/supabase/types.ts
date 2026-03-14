@@ -343,6 +343,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_published_solicitud: {
+        Args: { _solicitud_id: string }
+        Returns: boolean
+      }
+      is_vendedor_of_published: {
+        Args: { _usuario_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "vendedor" | "taller" | "admin"
