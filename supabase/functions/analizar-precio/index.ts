@@ -398,8 +398,9 @@ Responde SOLO en JSON con este formato exacto:
 
     let analysis: any;
     try {
-      const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-      analysis = JSON.parse(jsonMatch ? jsonMatch[0] : rawContent);
+      const cleaned = rawContent.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      analysis = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
     } catch {
       console.error("Failed to parse AI response:", rawContent);
       throw new Error("Failed to parse AI analysis");
