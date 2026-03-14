@@ -69,6 +69,35 @@ const detectFuenteFromUrl = (url: string): Fuente | null => {
   return null;
 };
 
+// Keywords that indicate a vehicle is NOT a camper/autocaravana
+const NON_CAMPER_KEYWORDS = [
+  "furgoneta de carga", "furgon industrial", "vehiculo comercial",
+  "furgoneta industrial", "isotermo", "frigorifico", "plataforma",
+  "volquete", "grua", "ambulancia", "chasis cabina", "caja abierta",
+  "caja cerrada", "furgon cerrado", "reparto", "mixta adaptable",
+  "combi 6", "kombi 6", "batalla corta", "no camperizada",
+  "sin camperizar", "de serie", "taller movil",
+];
+
+// Keywords that indicate a vehicle IS a camper/autocaravana
+const CAMPER_KEYWORDS = [
+  "camper", "autocaravana", "motorhome", "camperizada", "camperizado",
+  "vivienda", "california", "nugget", "marco polo", "westfalia",
+  "karmann", "possl", "globecar", "campster", "roamer",
+  "cama", "cocina", "fregadero", "ducha", "wc", "calefaccion",
+  "solar", "agua limpia", "deposito", "mesa plegable",
+  "perfilada", "capuchina", "integral",
+];
+
+const isCamperVehicle = (text: string): boolean => {
+  const norm = normalizeText(text);
+  const hasNonCamper = NON_CAMPER_KEYWORDS.some((kw) => norm.includes(normalizeText(kw)));
+  const hasCamper = CAMPER_KEYWORDS.some((kw) => norm.includes(normalizeText(kw)));
+  // If it has non-camper keywords and no camper keywords, reject it
+  if (hasNonCamper && !hasCamper) return false;
+  return true;
+};
+
 const isDirectListingUrl = (url: string, fuente: Fuente): boolean => {
   const u = String(url || "").toLowerCase();
   if (!u.startsWith("http")) return false;
