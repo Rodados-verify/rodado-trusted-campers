@@ -45,6 +45,7 @@ const AdminSolicitudDetalle = () => {
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
   const [ficha, setFicha] = useState<any>(null);
   const [fotosProcesadas, setFotosProcesadas] = useState<any[]>([]);
+  const [inspeccionDetalle, setInspeccionDetalle] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const [deleting, setDeleting] = useState(false);
