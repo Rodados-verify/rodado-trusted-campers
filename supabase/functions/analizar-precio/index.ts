@@ -41,8 +41,6 @@ serve(async (req) => {
 
     // Step 2 — Scrape via Apify (broad + specific queries across 3 platforms)
     const fullQuery = `${marca} ${modelo}`.replace(/\s+/g, "+");
-    const brandOnly = marca.replace(/\s+/g, "+");
-    const tipo = "autocaravana camper";
 
     // Primary URLs across requested marketplaces (flexible query, no exact matching)
     const startUrls = [
