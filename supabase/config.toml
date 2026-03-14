@@ -1,1 +1,7 @@
 project_id = "echrufiutqamgwdcnuap"
+
+[functions.generate-ficha-content]
+verify_jwt = false
+
+[functions.generate-inspection-pdf]
+verify_jwt = false

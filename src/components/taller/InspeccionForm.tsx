@@ -407,6 +407,18 @@ const InspeccionForm = ({ solicitudId, tallerId, onComplete }: InspeccionFormPro
       // Update solicitud estado
       await supabase.from("solicitudes").update({ estado: "contenido_generado" as any }).eq("id", solicitudId);
 
+      // Trigger PDF generation in background
+      try {
+        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        fetch(`https://${projectId}.supabase.co/functions/v1/generate-inspection-pdf`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ solicitud_id: solicitudId }),
+        });
+      } catch (pdfErr) {
+        console.error("PDF generation trigger failed:", pdfErr);
+      }
+
       toast({ title: "¡Inspección completada!", description: "El equipo está preparando la ficha." });
       onComplete();
     } catch (err: any) {
@@ -801,17 +813,6 @@ const InspeccionForm = ({ solicitudId, tallerId, onComplete }: InspeccionFormPro
               <div className="flex items-center gap-3 pt-6">
                 <Switch checked={data.cargas_embargos} onCheckedChange={v => update("cargas_embargos", v)} />
                 <Label className="text-sm">Cargas o embargos</Label>
-              </div>
-            </div>
-            <div>
-              <Label className="text-sm">Informe PDF (opcional)</Label>
-              <div className="mt-1.5 flex items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted/30 transition-colors">
-                  <FileText className="h-4 w-4" />
-                  <span>{pdfFile ? pdfFile.name : "Seleccionar PDF"}</span>
-                  <input type="file" accept=".pdf" className="hidden" onChange={e => setPdfFile(e.target.files?.[0] || null)} />
-                </label>
-                {pdfFile && <button type="button" onClick={() => setPdfFile(null)} className="text-xs text-muted-foreground hover:text-destructive">Quitar</button>}
               </div>
             </div>
             <SaveButton section="documentacion" saving={saving} onClick={() => saveSection("Documentación")} />

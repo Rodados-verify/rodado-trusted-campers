@@ -5,6 +5,7 @@ import { SelloRodado } from "@/components/SelloRodado";
 import { VehiculoGallery, type Photo as GalleryPhoto, type PhotoCategory } from "@/components/vehiculo/VehiculoGallery";
 import { VehiculoContactModal } from "@/components/vehiculo/VehiculoContactModal";
 import { VehiculoInspeccion } from "@/components/vehiculo/VehiculoInspeccion";
+import { PdfLeadCaptureModal } from "@/components/vehiculo/PdfLeadCaptureModal";
 import { Button } from "@/components/ui/button";
 import {
   Truck, MapPin, Gauge, CarFront, Shield, Fuel, Cog, Ruler,
@@ -245,6 +246,9 @@ const VehiculoPublico = () => {
             <div className="mt-4 space-y-2.5">
               <VehiculoContactModal vendedor={vendedor} vehicleName={vehicleName} />
               {showTransport && <TransportButton vendedor={vendedor} vehicleName={vehicleName} />}
+              {informe?.url_pdf && (
+                <PdfLeadCaptureModal solicitudId={solicitud.id} pdfUrl={informe.url_pdf} vehicleName={vehicleName} />
+              )}
             </div>
           </div>
           <div className="rounded-2xl border border-border bg-white p-5 text-center">
@@ -386,6 +390,9 @@ const VehiculoPublico = () => {
                 <div className="mt-6 space-y-3">
                   <VehiculoContactModal vendedor={vendedor} vehicleName={vehicleName} />
                   {showTransport && <TransportButton vendedor={vendedor} vehicleName={vehicleName} />}
+                  {informe?.url_pdf && (
+                    <PdfLeadCaptureModal solicitudId={solicitud.id} pdfUrl={informe.url_pdf} vehicleName={vehicleName} />
+                  )}
                 </div>
               </div>
 
