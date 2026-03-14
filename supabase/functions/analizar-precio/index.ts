@@ -218,16 +218,17 @@ const extractComparableFromSnippet = (
   const text = `${result.title || ""} ${result.description || ""}`;
   const relevanceText = normalizeText(text);
 
+  // Filter out non-camper vehicles
+  if (!isCamperVehicle(text)) return null;
+
   const hasMarca = marcaTokens.some((t) => relevanceText.includes(t));
   const modelMatches = modeloTokens.filter((t) => relevanceText.includes(t)).length;
   if (!hasMarca || modelMatches === 0) return null;
 
-  // Extract price from snippet (Google often shows "12.000 €" or "12.000€" in snippets)
+  // Extract price from snippet
   const priceMatches = [...text.matchAll(/(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*€/gi)]
     .map((m) => parseNumeric(m[1]))
     .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
-  
-  // Also try "EUR" and "euros"
   const priceMatches2 = [...text.matchAll(/(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*(eur|euros)\b/gi)]
     .map((m) => parseNumeric(m[1]))
     .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
@@ -242,11 +243,14 @@ const extractComparableFromSnippet = (
   if (yearNum > 0 && Math.abs(yearNum - targetYear) > 8) return null;
   if (kmNum > 0 && kmNum > Math.max(targetKm * 2.3, 360000)) return null;
 
-  const score =
-    modelMatches * 2 +
-    (yearNum > 0 ? Math.max(0, 3 - Math.abs(yearNum - targetYear)) : 0) +
-    (kmNum > 0 ? 1 : 0) +
-    1;
+  // Improved scoring: weight year proximity and km proximity
+  const yearProximity = yearNum > 0 ? Math.max(0, 5 - Math.abs(yearNum - targetYear)) : 0;
+  const kmProximity = kmNum > 0 && targetKm > 0
+    ? Math.max(0, 3 - Math.abs(kmNum - targetKm) / (targetKm * 0.5))
+    : 0;
+  const hasCamperKeyword = CAMPER_KEYWORDS.some((kw) => relevanceText.includes(normalizeText(kw))) ? 3 : 0;
+
+  const score = modelMatches * 2 + yearProximity + kmProximity + hasCamperKeyword + 1;
 
   return {
     titulo: result.title || "Vehículo similar",
