@@ -377,7 +377,7 @@ const NuevaSolicitudForm = ({ onCreated }: NuevaSolicitudFormProps) => {
           </div>
 
           <div className="rounded-xl border border-ocre/30 bg-ocre/5 p-6 text-center">
-            <p className="font-display text-3xl font-bold text-ocre">349 €</p>
+            <p className="font-display text-3xl font-bold text-ocre">499 €</p>
             <p className="mt-2 text-sm text-muted-foreground">
               El pago se habilitará próximamente. Tu solicitud quedará registrada y nos pondremos en contacto contigo en 24 horas.
             </p>
