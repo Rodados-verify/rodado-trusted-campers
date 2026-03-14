@@ -88,7 +88,7 @@ serve(async (req) => {
 
         const kmText = $el.find(kmSelectors).first().text().trim();
         const kmFromText = cardText.match(/(\d{1,3}(?:[.\s]\d{3})?|\d+)\s*km/i);
-        const finalKm = kmText || (kmFromText ? `\${kmFromText[1]} km` : '');
+        const finalKm = kmText || (kmFromText ? (kmFromText[1] + ' km') : '');
 
         const anioText = $el.find(yearSelectors).first().text().trim();
         const yearFromTitle = cardText.match(/\b(19|20)\d{2}\b/);
