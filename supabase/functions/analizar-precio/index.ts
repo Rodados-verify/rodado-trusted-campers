@@ -74,16 +74,26 @@ const isDirectListingUrl = (url: string, fuente: Fuente): boolean => {
   if (!u.startsWith("http")) return false;
 
   if (fuente === "wallapop") {
-    const isValidHost = u.includes("es.wallapop.com") || u.includes("www.wallapop.com");
+    const isValidHost = u.includes("es.wallapop.com") || u.includes("www.wallapop.com") || u.includes("wallapop.com");
     return isValidHost && /\/item\//.test(u) && !u.includes("/app/search");
   }
 
   if (fuente === "coches") {
-    return /-(arvo|covo|fuvivo)\.aspx(\?|$)/.test(u);
+    // coches.net listing URLs contain numeric IDs and end with .aspx or have /segunda-mano/ paths
+    return (
+      (u.includes("coches.net/") && /\.aspx/.test(u)) ||
+      (u.includes("coches.net/") && /\/\d{5,}/.test(u) && !u.includes("/buscar"))
+    );
   }
 
   if (fuente === "milanuncios") {
-    return u.endsWith(".htm") && !u.includes("?q=") && !u.includes("/busqueda");
+    // milanuncios.com listing URLs end in .htm or contain numeric listing IDs
+    return (
+      (u.endsWith(".htm") || /\/\d{8,}/.test(u) || /-\d{6,}\.htm/.test(u)) &&
+      !u.includes("?q=") &&
+      !u.includes("/busqueda") &&
+      !u.includes("/listado")
+    );
   }
 
   return false;
@@ -109,7 +119,17 @@ const extractTitle = (html: string): string => {
   return "Vehículo similar";
 };
 
-const runGoogleSearch = async (apifyToken: string, queries: string[]): Promise<string[]> => {
+type GoogleOrganicResult = {
+  url?: string;
+  link?: string;
+  title?: string;
+  description?: string;
+};
+
+const runGoogleSearch = async (
+  apifyToken: string,
+  queries: string[],
+): Promise<{ urls: string[]; organicResults: GoogleOrganicResult[] }> => {
   const endpoint = `https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=${apifyToken}`;
 
   const response = await fetch(endpoint, {
@@ -132,18 +152,90 @@ const runGoogleSearch = async (apifyToken: string, queries: string[]): Promise<s
   const data = await response.json();
   const rows = Array.isArray(data) ? data : [];
 
-  const urls = rows.flatMap((row: any) => {
-    const fromOrganic = Array.isArray(row?.organicResults)
-      ? row.organicResults.map((r: any) => r?.url || r?.link).filter(Boolean)
-      : [];
+  const allOrganics: GoogleOrganicResult[] = [];
+  const urls: string[] = [];
 
-    const fromRow = [row?.url, row?.link].filter(Boolean);
+  for (const row of rows) {
+    if (Array.isArray(row?.organicResults)) {
+      for (const r of row.organicResults) {
+        const url = r?.url || r?.link;
+        if (url) {
+          urls.push(String(url).trim());
+          allOrganics.push({
+            url: String(url).trim(),
+            title: r?.title || "",
+            description: r?.description || r?.snippet || "",
+          });
+        }
+      }
+    }
+  }
 
-    return [...fromOrganic, ...fromRow];
-  });
-
-  return [...new Set(urls.map((u: unknown) => String(u || "").trim()).filter(Boolean))];
+  return { urls: [...new Set(urls)], organicResults: allOrganics };
 };
+
+// Extract comparable data from Google search snippets (for JS-rendered sites)
+const extractComparableFromSnippet = (
+  result: GoogleOrganicResult,
+  marcaTokens: string[],
+  modeloTokens: string[],
+  targetYear: number,
+  targetKm: number,
+): ComparableCandidate | null => {
+  const url = result.url || "";
+  const fuente = detectFuenteFromUrl(url);
+  if (!fuente) return null;
+
+  const text = `${result.title || ""} ${result.description || ""}`;
+  const relevanceText = normalizeText(text);
+
+  const hasMarca = marcaTokens.some((t) => relevanceText.includes(t));
+  const modelMatches = modeloTokens.filter((t) => relevanceText.includes(t)).length;
+  if (!hasMarca || modelMatches === 0) return null;
+
+  // Extract price from snippet (Google often shows "12.000 €" or "12.000€" in snippets)
+  const priceMatches = [...text.matchAll(/(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*€/gi)]
+    .map((m) => parseNumeric(m[1]))
+    .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+  
+  // Also try "EUR" and "euros"
+  const priceMatches2 = [...text.matchAll(/(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*(eur|euros)\b/gi)]
+    .map((m) => parseNumeric(m[1]))
+    .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+
+  const prices = [...new Set([...priceMatches, ...priceMatches2])];
+  const price = prices[0] || 0;
+  if (!price) return null;
+
+  const yearNum = extractYear(text);
+  const kmNum = extractKm(text);
+
+  if (yearNum > 0 && Math.abs(yearNum - targetYear) > 8) return null;
+  if (kmNum > 0 && kmNum > Math.max(targetKm * 2.3, 360000)) return null;
+
+  const score =
+    modelMatches * 2 +
+    (yearNum > 0 ? Math.max(0, 3 - Math.abs(yearNum - targetYear)) : 0) +
+    (kmNum > 0 ? 1 : 0) +
+    1;
+
+  return {
+    titulo: result.title || "Vehículo similar",
+    precio: price,
+    km: kmNum ? `${kmNum.toLocaleString("es-ES")} km` : "",
+    anio: yearNum ? String(yearNum) : "",
+    url,
+    fuente,
+    _yearNum: yearNum,
+    _kmNum: kmNum,
+    _score: score,
+  };
+};
+
+
+
+
+
 
 const fetchComparableFromListing = async (
   url: string,
@@ -245,41 +337,90 @@ serve(async (req) => {
 
     // 2) Discover direct listing URLs from search index (more robust against blocked search pages)
     const searchQueries = [
-      `site:milanuncios.com/autocaravanas-de-segunda-mano "${marca} ${modelo}"`,
-      `site:milanuncios.com "${marca} ${modelo} camper"`,
-      `site:milanuncios.com "${marca} ${modelo} ${anio}"`,
-      `site:wallapop.com/item "${marca} ${modelo}" camper`,
-      `site:wallapop.com/item "${marca} ${modelo} ${anio}"`,
-      `site:coches.net "${marca} ${modelo}" (arvo.aspx OR covo.aspx OR fuvivo.aspx)`,
-      `site:coches.net "${marca} ${modelo} camper" (arvo.aspx OR covo.aspx OR fuvivo.aspx)`,
-      `site:coches.net "${marca} ${modelo} ${anio}" (arvo.aspx OR covo.aspx OR fuvivo.aspx)`,
+      // Milanuncios - broader queries
+      `site:milanuncios.com ${marca} ${modelo} autocaravana`,
+      `site:milanuncios.com ${marca} ${modelo} camper`,
+      `site:milanuncios.com "${marca} ${modelo}"`,
+      // Wallapop
+      `site:wallapop.com ${marca} ${modelo} camper autocaravana`,
+      `site:wallapop.com "${marca} ${modelo}" ${anio}`,
+      // Coches.net - broader queries without .aspx filter
+      `site:coches.net ${marca} ${modelo} autocaravana`,
+      `site:coches.net ${marca} ${modelo} camper`,
+      `site:coches.net "${marca} ${modelo}" segunda mano`,
     ];
 
-    let discoveredUrls: string[] = [];
+    // Run Google search
+    let googleResult: { urls: string[]; organicResults: GoogleOrganicResult[] } = { urls: [], organicResults: [] };
     try {
-      discoveredUrls = await runGoogleSearch(APIFY_TOKEN, searchQueries);
+      googleResult = await runGoogleSearch(APIFY_TOKEN, searchQueries);
+      console.log(`Google found ${googleResult.urls.length} URLs, ${googleResult.organicResults.length} organic results`);
     } catch (err) {
-      console.error("Search discovery error:", err);
+      console.error("Google search error:", err);
     }
 
-    const directListingUrls = discoveredUrls
-      .map((u) => String(u || "").trim())
-      .filter((u) => {
-        const fuente = detectFuenteFromUrl(u);
-        return fuente ? isDirectListingUrl(u, fuente) : false;
-      });
+    // Strategy A: Extract comparables from Google snippets (works for JS-rendered sites like Milanuncios/Coches.net)
+    const snippetComparables: ComparableCandidate[] = [];
+    for (const result of googleResult.organicResults) {
+      const fuente = detectFuenteFromUrl(result.url || "");
+      if (fuente === "milanuncios" || fuente === "coches") {
+        const comp = extractComparableFromSnippet(result, marcaTokens, modeloTokens, anio, km || 200000);
+        if (comp) snippetComparables.push(comp);
+      }
+    }
+    console.log(`Snippet extraction: ${snippetComparables.length} comparables from Milanuncios/Coches.net snippets`);
 
-    const uniqueListingUrls = [...new Set(directListingUrls)].slice(0, 24);
-    console.log(`Discovered ${uniqueListingUrls.length} direct listing URLs`);
+    // Strategy B: Fetch Wallapop listing pages directly (they're server-rendered)
+    const wallapopUrls = googleResult.urls.filter((u) => {
+      const f = detectFuenteFromUrl(u);
+      return f === "wallapop" && isDirectListingUrl(u, f);
+    });
 
-    // 3) Extract each listing data from listing page itself
-    const comparableCandidates = (
+    // Also scrape Wallapop category pages for more item URLs
+    const wallapopCategoryUrls = googleResult.urls.filter(
+      (u) => u.includes("wallapop.com/") && !u.includes("/item/") && !u.includes("google.com"),
+    );
+    const extraWallapopUrls: string[] = [];
+    for (const catUrl of wallapopCategoryUrls.slice(0, 3)) {
+      try {
+        const res = await fetch(catUrl, {
+          signal: AbortSignal.timeout(6000),
+          headers: {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+            "Accept-Language": "es-ES,es;q=0.9",
+          },
+        });
+        if (!res.ok) { await res.text(); continue; }
+        const html = await res.text();
+        const itemMatches = [
+          ...html.matchAll(/href=["'](https?:\/\/[^"']*wallapop\.com\/item\/[^"']+)["']/gi),
+          ...html.matchAll(/href=["'](\/item\/[^"']+)["']/gi),
+        ];
+        for (const m of itemMatches) {
+          const href = m[1].startsWith("/") ? `https://es.wallapop.com${m[1]}` : m[1];
+          extraWallapopUrls.push(href);
+        }
+      } catch { /* skip */ }
+    }
+
+    const allWallapopUrls = [...new Set([...wallapopUrls, ...extraWallapopUrls])].slice(0, 15);
+    console.log(`Wallapop: ${wallapopUrls.length} direct + ${extraWallapopUrls.length} from categories = ${allWallapopUrls.length} to fetch`);
+
+    // Fetch Wallapop pages
+    let fetchFailures = 0;
+    const wallapopComparables = (
       await Promise.all(
-        uniqueListingUrls.map((url) =>
-          fetchComparableFromListing(url, marcaTokens, modeloTokens, anio, km || 200000),
-        ),
+        allWallapopUrls.map(async (url) => {
+          const result = await fetchComparableFromListing(url, marcaTokens, modeloTokens, anio, km || 200000);
+          if (!result) fetchFailures++;
+          return result;
+        }),
       )
     ).filter(Boolean) as ComparableCandidate[];
+    console.log(`Wallapop fetch: ${wallapopComparables.length} extracted, ${fetchFailures} failed`);
+
+    // Combine all comparables
+    const comparableCandidates = [...wallapopComparables, ...snippetComparables];
 
     // Dedupe by source + price + URL
     const seen = new Set<string>();
@@ -385,8 +526,9 @@ Responde SOLO en JSON con este formato exacto:
 
     let analysis: any;
     try {
-      const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-      analysis = JSON.parse(jsonMatch ? jsonMatch[0] : rawContent);
+      const cleaned = rawContent.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      analysis = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
     } catch {
       console.error("Failed to parse AI response:", rawContent);
       throw new Error("Failed to parse AI analysis");
