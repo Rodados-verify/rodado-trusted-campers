@@ -44,74 +44,94 @@ serve(async (req) => {
     const brandOnly = marca.replace(/\s+/g, "+");
     const tipo = "autocaravana camper";
 
-    // Primary URLs (specific) + fallback URLs (brand-only, broader)
+    // Primary URLs across requested marketplaces (flexible query, no exact matching)
     const startUrls = [
-      // Milanuncios — specific + broad
-      { url: `https://www.milanuncios.com/autocaravanas/?q=${fullQuery}&aniodesde=${anio - 3}&aniohasta=${anio + 3}` },
-      { url: `https://www.milanuncios.com/autocaravanas/?q=${brandOnly}&aniodesde=${anio - 4}&aniohasta=${anio + 4}` },
-      // Wallapop — specific + broad
-      { url: `https://www.wallapop.com/app/search?keywords=${fullQuery}&category_ids=14000` },
-      { url: `https://www.wallapop.com/app/search?keywords=${brandOnly}+${tipo.replace(/\s+/g, "+")}&category_ids=14000` },
-      // Coches.net — specific + broad
-      { url: `https://www.coches.net/autocaravanas-y-remolques/?q=${fullQuery}` },
-      { url: `https://www.coches.net/autocaravanas-y-remolques/?q=${brandOnly}` },
+      { url: `https://www.milanuncios.com/autocaravanas/?q=${fullQuery}+camper&aniodesde=${anio - 5}&aniohasta=${anio + 5}` },
+      { url: `https://www.wallapop.com/app/search?keywords=${fullQuery}+camper&category_ids=14000` },
+      { url: `https://www.coches.net/autocaravanas-y-remolques/?q=${fullQuery}+camper` },
     ];
 
     const pageFunction = `async function pageFunction(context) {
       const { $, request, log } = context;
       const items = [];
-      
-      // Very broad selectors to catch any listing card across sites
+
+      const extractPriceDigits = (text = '') => {
+        const normalized = String(text).replace(/\s+/g, ' ');
+        const match = normalized.match(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)?/i);
+        return match ? match[1].replace(/[.,\s]/g, '') : '';
+      };
+
+      // Very broad selectors to catch listing cards across sites
       const cardSelectors = [
         '[data-testid="listing"]', '.ma-AdCard', '.ma-AdCardV2',
         'article', '.vehicle-card', '[class*="ItemCard"]', '[class*="ad-card"]',
         '[class*="AdCard"]', '[class*="listing"]', '[class*="Listing"]',
         '.ad-list-item', '.list-item', '.product-card', '[class*="product"]',
-        '[class*="Result"]', '[class*="result"]', '.card', '[class*="Card"]'
+        '[class*="Result"]', '[class*="result"]', '.card', '[class*="Card"]',
+        '[class*="item"]', '[class*="Item"]'
       ].join(', ');
-      
-      const titleSelectors = 'h2, h3, h4, .title, [class*="title"], [class*="Title"], [class*="name"], [class*="Name"]';
-      const priceSelectors = '[class*="price"], [class*="Price"], .precio, .price, [class*="amount"], [class*="Amount"]';
+
+      const titleSelectors = 'h1, h2, h3, h4, .title, [class*="title"], [class*="Title"], [class*="name"], [class*="Name"]';
+      const priceSelectors = '[class*="price"], [class*="Price"], .precio, .price, [class*="amount"], [class*="Amount"], [data-testid*="price"]';
       const kmSelectors = '[class*="km"], [class*="kilometer"], [class*="Km"], [class*="mileage"]';
       const yearSelectors = '[class*="year"], [class*="anio"], [class*="Year"], [class*="date"]';
-      
+
       $(cardSelectors).each((i, el) => {
-        if (i >= 30) return false; // Limit per page
+        if (i >= 40) return false;
         const $el = $(el);
-        const titulo = $el.find(titleSelectors).first().text().trim();
-        const precio = $el.find(priceSelectors).first().text().trim();
+        const cardText = $el.text().replace(/\s+/g, ' ').trim();
+
+        const tituloRaw = $el.find(titleSelectors).first().text().trim();
+        const titulo = tituloRaw || cardText.slice(0, 90) || `Anuncio ${i + 1}`;
+
+        const priceText = $el.find(priceSelectors).first().text().trim();
+        const precioDigits = extractPriceDigits(priceText) || extractPriceDigits(cardText);
+        if (!precioDigits) return;
+
         const kmText = $el.find(kmSelectors).first().text().trim();
+        const kmFromText = cardText.match(/(\d{1,3}(?:[.\s]\d{3})?|\d+)\s*km/i);
+        const finalKm = kmText || (kmFromText ? `${kmFromText[1]} km` : '');
+
         const anioText = $el.find(yearSelectors).first().text().trim();
-        const href = $el.find('a').first().attr('href') || '';
-        
-        // Also try to extract year from title text
-        const yearFromTitle = titulo.match(/\\b(19|20)\\d{2}\\b/);
+        const yearFromTitle = cardText.match(/\b(19|20)\d{2}\b/);
         const finalAnio = anioText || (yearFromTitle ? yearFromTitle[0] : '');
-        
-        // Also try to extract km from title text  
-        const kmFromTitle = titulo.match(/(\\d[\\d.]+)\\s*km/i);
-        const finalKm = kmText || (kmFromTitle ? kmFromTitle[1] : '');
-        
-        if (titulo && precio) {
-          items.push({
-            titulo,
-            precio,
-            km: finalKm,
-            anio: finalAnio,
-            url: href.startsWith('http') ? href : request.url.split('/').slice(0, 3).join('/') + href,
-            fuente: new URL(request.url).hostname.replace('www.', '').split('.')[0]
-          });
-        }
+
+        const href = $el.find('a').first().attr('href') || '';
+
+        items.push({
+          titulo,
+          precio: `${precioDigits}€`,
+          km: finalKm,
+          anio: finalAnio,
+          url: href.startsWith('http') ? href : request.url.split('/').slice(0, 3).join('/') + href,
+          fuente: new URL(request.url).hostname.replace('www.', '').split('.')[0]
+        });
       });
-      
-      // If no cards found with structured selectors, try extracting from full page text
-      if (items.length === 0) {
-        log.info('No structured cards found, trying text extraction from: ' + request.url);
-        const bodyText = $('body').text();
-        const priceMatches = bodyText.match(/(\\d{1,3}[.,]\\d{3})\\s*€/g) || [];
-        log.info('Found ' + priceMatches.length + ' price-like patterns in page text');
+
+      // Fallback: if structured extraction is poor, extract raw price patterns from full page text
+      if (items.length < 3) {
+        const bodyText = $('body').text().replace(/\s+/g, ' ');
+        const matches = [...bodyText.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*€/g)]
+          .map((m) => m[1].replace(/[.,\s]/g, ''))
+          .filter(Boolean)
+          .slice(0, 12);
+
+        const existing = new Set(items.map((item) => item.precio));
+        matches.forEach((digits, idx) => {
+          const precio = `${digits}€`;
+          if (!existing.has(precio)) {
+            items.push({
+              titulo: `Comparable ${idx + 1}`,
+              precio,
+              km: '',
+              anio: '',
+              url: request.url,
+              fuente: new URL(request.url).hostname.replace('www.', '').split('.')[0]
+            });
+          }
+        });
       }
-      
+
       log.info('Scraped ' + items.length + ' items from ' + request.url);
       return items;
     }`;
