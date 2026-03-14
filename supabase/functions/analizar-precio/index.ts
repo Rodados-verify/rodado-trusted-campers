@@ -7,6 +7,206 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+type Fuente = "milanuncios" | "wallapop" | "coches";
+
+type ComparableCandidate = {
+  titulo: string;
+  precio: number;
+  km: string;
+  anio: string;
+  url: string;
+  fuente: Fuente;
+  _yearNum: number;
+  _kmNum: number;
+  _score: number;
+};
+
+const normalizeText = (value: string) =>
+  String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const parseNumeric = (raw: string): number =>
+  parseInt(String(raw || "").replace(/[.,\s]/g, "").replace(/\D/g, ""), 10);
+
+const extractYear = (text: string): number => {
+  const matches = [...String(text || "").matchAll(/\b(19|20)\d{2}\b/g)].map((m) => parseInt(m[0], 10));
+  return matches.find((y) => y >= 1980 && y <= 2035) || 0;
+};
+
+const extractKm = (text: string): number => {
+  const matches = [...String(text || "").matchAll(/(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*km\b/gi)]
+    .map((m) => parseNumeric(m[1]))
+    .filter((n) => Number.isFinite(n) && n >= 500 && n <= 700000);
+  return matches[0] || 0;
+};
+
+const extractPriceCandidates = (html: string, plainText: string): number[] => {
+  const fromMeta = [
+    ...html.matchAll(/product:price:amount["'][^>]*content=["'](\d{4,6}(?:[.,]\d{1,2})?)["']/gi),
+    ...html.matchAll(/"price"\s*:\s*"?(\d{4,6}(?:[.,]\d{1,2})?)"?/gi),
+  ]
+    .map((m) => parseNumeric(m[1]))
+    .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+
+  const fromText = [...plainText.matchAll(/(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*(€|eur|euros)\b/gi)]
+    .map((m) => parseNumeric(m[1]))
+    .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+
+  const unique = [...new Set([...fromMeta, ...fromText])];
+  return unique.slice(0, 6);
+};
+
+const detectFuenteFromUrl = (url: string): Fuente | null => {
+  const u = String(url || "").toLowerCase();
+  if (u.includes("milanuncios.com")) return "milanuncios";
+  if (u.includes("wallapop.com")) return "wallapop";
+  if (u.includes("coches.net")) return "coches";
+  return null;
+};
+
+const isDirectListingUrl = (url: string, fuente: Fuente): boolean => {
+  const u = String(url || "").toLowerCase();
+  if (!u.startsWith("http")) return false;
+
+  if (fuente === "wallapop") {
+    return /\/item\//.test(u) && !u.includes("/app/search");
+  }
+
+  if (fuente === "coches") {
+    return /-(arvo|covo|fuvivo)\.aspx(\?|$)/.test(u);
+  }
+
+  if (fuente === "milanuncios") {
+    return u.endsWith(".htm") && !u.includes("?q=") && !u.includes("/busqueda");
+  }
+
+  return false;
+};
+
+const cleanHtmlToText = (html: string): string =>
+  String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const extractTitle = (html: string): string => {
+  const og = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1];
+  if (og) return og.trim();
+
+  const ttl = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+  if (ttl) return ttl.trim();
+
+  return "Vehículo similar";
+};
+
+const runGoogleSearch = async (apifyToken: string, queries: string[]): Promise<string[]> => {
+  const endpoint = `https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=${apifyToken}`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      queries: queries.join("\n"),
+      maxPagesPerQuery: 1,
+      resultsPerPage: 10,
+      languageCode: "es",
+      mobileResults: false,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Google search scraper failed (${response.status}): ${err}`);
+  }
+
+  const data = await response.json();
+  const rows = Array.isArray(data) ? data : [];
+
+  const urls = rows.flatMap((row: any) => {
+    const fromOrganic = Array.isArray(row?.organicResults)
+      ? row.organicResults.map((r: any) => r?.url || r?.link).filter(Boolean)
+      : [];
+
+    const fromRow = [row?.url, row?.link].filter(Boolean);
+
+    return [...fromOrganic, ...fromRow];
+  });
+
+  return [...new Set(urls.map((u: unknown) => String(u || "").trim()).filter(Boolean))];
+};
+
+const fetchComparableFromListing = async (
+  url: string,
+  marcaTokens: string[],
+  modeloTokens: string[],
+  targetYear: number,
+  targetKm: number,
+): Promise<ComparableCandidate | null> => {
+  const fuente = detectFuenteFromUrl(url);
+  if (!fuente) return null;
+  if (!isDirectListingUrl(url, fuente)) return null;
+
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(9000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+      },
+    });
+
+    if (!res.ok) return null;
+    const html = await res.text();
+    const plainText = cleanHtmlToText(html);
+    const title = extractTitle(html);
+
+    const prices = extractPriceCandidates(html, plainText);
+    const price = prices[0] || 0;
+    if (!price) return null;
+
+    const yearNum = extractYear(`${title} ${plainText}`);
+    const kmNum = extractKm(`${title} ${plainText}`);
+
+    const relevanceText = normalizeText(`${title} ${url}`);
+    const hasMarca = marcaTokens.some((t) => relevanceText.includes(t));
+    const modelMatches = modeloTokens.filter((t) => relevanceText.includes(t)).length;
+
+    if (!hasMarca || modelMatches === 0) return null;
+
+    if (yearNum > 0 && Math.abs(yearNum - targetYear) > 8) return null;
+    if (kmNum > 0 && kmNum > Math.max(targetKm * 2.3, 360000)) return null;
+
+    const score =
+      modelMatches * 2 +
+      (yearNum > 0 ? Math.max(0, 3 - Math.abs(yearNum - targetYear)) : 0) +
+      (kmNum > 0 ? 1 : 0) +
+      2;
+
+    return {
+      titulo: title,
+      precio: price,
+      km: kmNum ? `${kmNum.toLocaleString("es-ES")} km` : "",
+      anio: yearNum ? String(yearNum) : "",
+      url,
+      fuente,
+      _yearNum: yearNum,
+      _kmNum: kmNum,
+      _score: score,
+    };
+  } catch {
+    return null;
+  }
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -26,7 +226,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Step 1 — Get vehicle data
+    // 1) Load vehicle to analyze
     const { data: solicitud, error: solError } = await supabase
       .from("solicitudes")
       .select("marca, modelo, anio, km, precio_venta, provincia")
@@ -39,587 +239,69 @@ serve(async (req) => {
 
     const { marca, modelo, anio, km, precio_venta, provincia } = solicitud;
 
-    // Step 2 — Build targeted search URLs and scrape listing-level data
-    const normalizeText = (value: string) =>
-      value
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9\s]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+    const marcaTokens = normalizeText(marca).split(" ").filter((t) => t.length >= 2);
+    const modeloTokens = normalizeText(modelo).split(" ").filter((t) => t.length >= 3);
 
-    const slugify = (value: string) =>
-      normalizeText(value)
-        .replace(/\s+/g, "-")
-        .replace(/-+/g, "-");
-
-    const marcaNorm = normalizeText(marca);
-    const marcaToken = marcaNorm.split(" ").filter(Boolean)[0] || marcaNorm;
-    const modeloTokens = normalizeText(modelo)
-      .split(" ")
-      .filter((t) => t.length >= 3);
-
-    const isRelevantToVehicle = (title: string) => {
-      const t = normalizeText(title || "");
-      const hasMarca = marcaToken ? t.includes(marcaToken) : true;
-      const hasModelo = modeloTokens.length > 0 ? modeloTokens.some((token) => t.includes(token)) : true;
-      return hasMarca && hasModelo;
-    };
-
-    const fullQuery = encodeURIComponent(`${marca} ${modelo}`.trim());
-    const marcaQuery = encodeURIComponent(marca.trim());
-    const modelSlug = slugify(`${marca} ${modelo}`);
-
-    const startUrls = [
-      // Milanuncios
-      { fuente: "milanuncios", url: `https://www.milanuncios.com/autocaravanas-de-segunda-mano/${modelSlug}.htm` },
-      { fuente: "milanuncios", url: `https://www.milanuncios.com/autocaravanas-de-segunda-mano/?q=${fullQuery}` },
-      // Wallapop
-      { fuente: "wallapop", url: `https://www.wallapop.com/app/search?keywords=${fullQuery}&category_ids=14000` },
-      { fuente: "wallapop", url: `https://www.wallapop.com/app/search?keywords=${marcaQuery}%20camper&category_ids=14000` },
-      // Coches.net
-      { fuente: "coches", url: `https://www.coches.net/segunda-mano/?q=${fullQuery}` },
-      { fuente: "coches", url: `https://www.coches.net/autocaravanas-y-remolques/?q=${fullQuery}` },
+    // 2) Discover direct listing URLs from search index (more robust against blocked search pages)
+    const searchQueries = [
+      `site:milanuncios.com/autocaravanas-de-segunda-mano "${marca} ${modelo}"`,
+      `site:milanuncios.com/autocaravanas-de-segunda-mano "${marca} ${modelo} ${anio}"`,
+      `site:wallapop.com/item "${marca} ${modelo}" camper`,
+      `site:wallapop.com/item "${marca} ${modelo} ${anio}"`,
+      `site:coches.net "${marca} ${modelo}" (arvo.aspx OR covo.aspx OR fuvivo.aspx)`,
+      `site:coches.net "${marca} ${modelo} ${anio}" (arvo.aspx OR covo.aspx OR fuvivo.aspx)`,
     ];
 
-    const pageFunction = `async function pageFunction(context) {
-      const { $, request, log } = context;
-      const items = [];
-
-      const toNumber = (raw) => parseInt(String(raw || '').replace(/[.,\s]/g, '').replace(/\D/g, ''), 10);
-
-      const extractPriceNumber = (text = '') => {
-        const normalized = String(text).replace(/\s+/g, ' ').trim();
-        if (!normalized) return null;
-
-        const euroMatches = [...normalized.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)\b/gi)]
-          .map((m) => toNumber(m[1]))
-          .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
-        if (euroMatches.length > 0) return euroMatches[0];
-
-        const genericMatches = [...normalized.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})/g)]
-          .map((m) => {
-            const value = toNumber(m[1]);
-            const idx = m.index || 0;
-            const tail = normalized.slice(idx, idx + 16).toLowerCase();
-            return { value, tail };
-          })
-          .filter(({ value, tail }) => (
-            Number.isFinite(value) &&
-            value >= 3000 &&
-            value <= 300000 &&
-            !(value >= 1900 && value <= 2035) &&
-            !tail.includes('km')
-          ))
-          .map(({ value }) => value);
-
-        if (genericMatches.length === 0) return null;
-        return genericMatches.sort((a, b) => a - b)[Math.floor(genericMatches.length / 2)];
-      };
-
-      const cardSelectors = [
-        '[data-testid="listing"]', '.ma-AdCard', '.ma-AdCardV2', 'article', '.vehicle-card',
-        '[class*="ItemCard"]', '[class*="ad-card"]', '[class*="listing"]', '[class*="Listing"]',
-        '.ad-list-item', '.list-item', '.product-card', '[class*="product"]', '[class*="Result"]',
-        '[class*="result"]', '.card', '[class*="Card"]', '[class*="item"]', '[class*="Item"]'
-      ].join(', ');
-
-      const titleSelectors = 'h1, h2, h3, h4, .title, [class*="title"], [class*="Title"], [class*="name"], [class*="Name"]';
-      const priceSelectors = '[class*="price"], [class*="Price"], .precio, .price, [class*="amount"], [class*="Amount"], [data-testid*="price"]';
-      const kmSelectors = '[class*="km"], [class*="kilometer"], [class*="Km"], [class*="mileage"]';
-      const yearSelectors = '[class*="year"], [class*="anio"], [class*="Year"], [class*="date"]';
-
-      const origin = request.url.split('/').slice(0, 3).join('/');
-
-      $(cardSelectors).each((i, el) => {
-        if (i >= 80) return false;
-
-        const $el = $(el);
-        const cardText = $el.text().replace(/\s+/g, ' ').trim();
-        const tituloRaw = $el.find(titleSelectors).first().text().trim();
-        const titulo = tituloRaw || cardText.slice(0, 120) || ('Anuncio ' + (i + 1));
-
-        const priceText = $el.find(priceSelectors).first().text().trim();
-        const precioNum = extractPriceNumber(priceText) ?? extractPriceNumber(cardText);
-        if (!precioNum) return;
-
-        const kmText = $el.find(kmSelectors).first().text().trim();
-        const kmFromText = cardText.match(/(\d{1,3}(?:[.\s]\d{3})?|\d+)\s*km/i);
-        const finalKm = kmText || (kmFromText ? (kmFromText[1] + ' km') : '');
-
-        const anioText = $el.find(yearSelectors).first().text().trim();
-        const yearFromTitle = cardText.match(/\b(19|20)\d{2}\b/);
-        const finalAnio = anioText || (yearFromTitle ? yearFromTitle[0] : '');
-
-        const hrefRaw = ($el.find('a[href]').first().attr('href') || '').trim();
-        if (!hrefRaw || hrefRaw.startsWith('#') || hrefRaw.startsWith('javascript:')) return;
-
-        let absoluteUrl = '';
-        try {
-          absoluteUrl = new URL(hrefRaw, origin).toString();
-        } catch {
-          absoluteUrl = hrefRaw.startsWith('http') ? hrefRaw : '';
-        }
-
-        if (!absoluteUrl) return;
-
-        items.push({
-          titulo,
-          precio: String(precioNum) + '€',
-          km: finalKm,
-          anio: finalAnio,
-          url: absoluteUrl,
-          fuente: new URL(request.url).hostname.replace('www.', '').split('.')[0],
-        });
-      });
-
-      log.info('Scraped ' + items.length + ' listing candidates from ' + request.url);
-      return items;
-    }`;
-
-    const apifyEndpoint = `https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}`;
-
-    const extractPricesFromHtml = (html: string): number[] => {
-      const matches = [...html.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)\b/gi)]
-        .map((m) => parseInt(m[1].replace(/[.,\s]/g, ""), 10))
-        .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
-
-      return [...new Set(matches)].slice(0, 10);
-    };
-
-    const extractPriceFromText = (text: string): number => {
-      const value = String(text || "").replace(/\s+/g, " ").trim();
-      if (!value) return 0;
-      const priceMatches = [...value.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)?/gi)]
-        .map((m) => parseInt(String(m[1]).replace(/[.,\s]/g, ""), 10))
-        .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
-      return priceMatches[0] || 0;
-    };
-
-    const extractListingUrlsFromHtml = (html: string, fuente: string): string[] => {
-      if (!html) return [];
-      const normalizedHtml = html.replace(/\\\//g, "/");
-
-      if (fuente === "wallapop") {
-        const matches = [
-          ...normalizedHtml.matchAll(/https?:\/\/www\.wallapop\.com\/item\/[^\"'\s<]+/g),
-          ...normalizedHtml.matchAll(/\/item\/[^\"'\s<]+/g),
-        ].map((m) => m[0]);
-        return [...new Set(matches)].slice(0, 20);
-      }
-
-      if (fuente === "coches") {
-        const matches = [
-          ...normalizedHtml.matchAll(/https?:\/\/www\.coches\.net\/[^\"'\s<]+-(?:arvo|covo|fuvivo)\.aspx/g),
-          ...normalizedHtml.matchAll(/\/[^\"'\s<]+-(?:arvo|covo|fuvivo)\.aspx/g),
-        ].map((m) => m[0]);
-        return [...new Set(matches)].slice(0, 20);
-      }
-
-      if (fuente === "milanuncios") {
-        const matches = [
-          ...normalizedHtml.matchAll(/https?:\/\/www\.milanuncios\.com\/[^\"'\s<]+\.htm/g),
-          ...normalizedHtml.matchAll(/\/[^\"'\s<]+\.htm/g),
-        ].map((m) => m[0]);
-        return [...new Set(matches)].slice(0, 20);
-      }
-
-      return [];
-    };
-
-    let apifyResults: any[] = [];
-    const apifyPayload = {
-      startUrls: startUrls.map((item) => ({ url: item.url })),
-      maxRequestsPerCrawl: 8,
-      maxConcurrency: 2,
-      useChrome: true,
-      waitUntil: ["networkidle2"],
-      pageFunction,
-      proxyConfiguration: {
-        useApifyProxy: true,
-        apifyProxyCountry: "ES",
-      },
-    };
-
+    let discoveredUrls: string[] = [];
     try {
-      const apifyResponse = await fetch(apifyEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apifyPayload),
+      discoveredUrls = await runGoogleSearch(APIFY_TOKEN, searchQueries);
+    } catch (err) {
+      console.error("Search discovery error:", err);
+    }
+
+    const directListingUrls = discoveredUrls
+      .map((u) => String(u || "").trim())
+      .filter((u) => {
+        const fuente = detectFuenteFromUrl(u);
+        return fuente ? isDirectListingUrl(u, fuente) : false;
       });
 
-      if (apifyResponse.ok) {
-        const apifyData = await apifyResponse.json();
-        const rows = Array.isArray(apifyData) ? apifyData : [];
-        apifyResults = rows.flatMap((row: any) => (Array.isArray(row) ? row : [row]));
-      } else {
-        const err = await apifyResponse.text();
-        console.error("Apify scraping failed:", apifyResponse.status, err);
-      }
-    } catch (e) {
-      console.error("Apify request error:", e);
-    }
+    const uniqueListingUrls = [...new Set(directListingUrls)].slice(0, 24);
+    console.log(`Discovered ${uniqueListingUrls.length} direct listing URLs`);
 
-    console.log(`Apify returned ${apifyResults.length} raw listing candidates`);
+    // 3) Extract each listing data from listing page itself
+    const comparableCandidates = (
+      await Promise.all(
+        uniqueListingUrls.map((url) =>
+          fetchComparableFromListing(url, marcaTokens, modeloTokens, anio, km || 200000),
+        ),
+      )
+    ).filter(Boolean) as ComparableCandidate[];
 
-    // Fast fallback: direct HTML extraction (price + direct listing URLs)
-    const directSources = [
-      startUrls.find((s) => s.fuente === "milanuncios" && s.url.includes("?q=")) || startUrls.find((s) => s.fuente === "milanuncios"),
-      startUrls.find((s) => s.fuente === "wallapop"),
-      startUrls.find((s) => s.fuente === "coches" && s.url.includes("autocaravanas-y-remolques")) || startUrls.find((s) => s.fuente === "coches"),
-    ].filter(Boolean) as Array<{ fuente: string; url: string }>;
-
-    const directResultsNested = await Promise.all(
-      directSources.map(async ({ fuente, url }) => {
-        try {
-          const resp = await fetch(url, {
-            signal: AbortSignal.timeout(8000),
-            headers: {
-              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
-              "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-            },
-          });
-
-          if (!resp.ok) return [];
-          const html = await resp.text();
-          const prices = extractPricesFromHtml(html);
-          const listingUrls = extractListingUrlsFromHtml(html, fuente);
-          const count = Math.max(prices.length, listingUrls.length);
-          const basePrice = Number(precio_venta) > 0 ? Number(precio_venta) : 25000;
-
-          const titleFromUrl = (rawUrl: string) => {
-            if (!rawUrl) return `${marca} ${modelo}`;
-            try {
-              const pathname = new URL(rawUrl, `https://www.${fuente}.com`).pathname;
-              const last = pathname.split("/").filter(Boolean).pop() || "";
-              return decodeURIComponent(
-                last
-                  .replace(/\.(htm|aspx)$/i, "")
-                  .replace(/-(arvo|covo|fuvivo)$/i, "")
-                  .replace(/[-_]+/g, " ")
-              );
-            } catch {
-              return `${marca} ${modelo}`;
-            }
-          };
-
-          return Array.from({ length: count }).map((_, idx) => {
-            const candidateUrl = listingUrls[idx] || "";
-            const inferredTitle = titleFromUrl(candidateUrl);
-            const inferredPrice = prices[idx] || prices[0] || Math.round(basePrice * (0.9 + Math.min(idx, 4) * 0.05));
-
-            return {
-              titulo: inferredTitle,
-              precio: inferredPrice ? `${inferredPrice}€` : "",
-              km: "",
-              anio: "",
-              url: candidateUrl,
-              fuente,
-              _direct: true,
-              _idx: idx,
-            };
-          });
-        } catch {
-          return [];
-        }
-      })
-    );
-
-    const directResults = directResultsNested.flat();
-    console.log(`Direct fallback returned ${directResults.length} raw candidates`);
-
-    // Search-engine fallback via Apify (gets direct ad URLs even when marketplaces block scraping)
-    let searchFallbackResults: any[] = [];
-    if (apifyResults.length + directResults.length < 3) {
-      try {
-        const searchEndpoint = `https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}`;
-        const searchQueries = [
-          { fuente: "milanuncios", query: `site:milanuncios.com/autocaravanas-de-segunda-mano "${marca} ${modelo}"` },
-          { fuente: "wallapop", query: `site:wallapop.com/item "${marca} ${modelo}" camper` },
-          { fuente: "coches", query: `site:coches.net "${marca} ${modelo}" (arvo.aspx OR covo.aspx OR fuvivo.aspx)` },
-        ];
-
-        const searchResponse = await fetch(searchEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            queries: searchQueries.map((q) => q.query).join("\n"),
-            maxPagesPerQuery: 1,
-            resultsPerPage: 10,
-            languageCode: "es",
-            mobileResults: false,
-          }),
-        });
-
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json();
-          const rows = Array.isArray(searchData) ? searchData : [];
-
-          const flattened = rows.flatMap((row: any) => {
-            if (Array.isArray(row?.organicResults)) {
-              return row.organicResults.map((r: any) => ({
-                url: r.url || r.link || "",
-                titulo: r.title || "",
-                snippet: r.description || r.snippet || "",
-              }));
-            }
-            if (row?.url || row?.link) {
-              return [{
-                url: row.url || row.link,
-                titulo: row.title || "",
-                snippet: row.description || row.snippet || "",
-              }];
-            }
-            return [];
-          });
-
-          const basePrice = Number(precio_venta) > 0 ? Number(precio_venta) : 25000;
-          searchFallbackResults = flattened
-            .map((item: any, idx: number) => {
-              const url = String(item.url || "");
-              const title = String(item.titulo || "").trim();
-              const snippet = String(item.snippet || "").trim();
-              const joinedText = `${title} ${snippet}`;
-
-              let fuente = "otro";
-              if (url.includes("milanuncios.com")) fuente = "milanuncios";
-              else if (url.includes("wallapop.com")) fuente = "wallapop";
-              else if (url.includes("coches.net")) fuente = "coches";
-
-              if (fuente === "otro") return null;
-
-              const parsedPrice = extractPriceFromText(joinedText);
-              const estimatedPrice = parsedPrice || Math.round(basePrice * (0.88 + (idx % 5) * 0.06));
-
-              return {
-                titulo: title || `${marca} ${modelo}`,
-                precio: `${estimatedPrice}€`,
-                km: "",
-                anio: "",
-                url,
-                fuente,
-                _searchFallback: true,
-              };
-            })
-            .filter(Boolean);
-        } else {
-          const err = await searchResponse.text();
-          console.error("Apify search fallback failed:", searchResponse.status, err);
-        }
-      } catch (e) {
-        console.error("Search fallback error:", e);
-      }
-    }
-
-    console.log(`Search fallback returned ${searchFallbackResults.length} candidates`);
-
-    let resultados: any[] = [...apifyResults, ...directResults, ...searchFallbackResults];
-    console.log(`Total raw results for analysis: ${resultados.length}`);
-
-    // Step 3 — Normalize, score, and filter relevant results
-    const extractPriceNumberServer = (value: unknown): number => {
-      const text = String(value || "").replace(/\s+/g, " ").trim();
-      if (!text) return 0;
-
-      const toNum = (raw: string) => parseInt(raw.replace(/[.,\s]/g, "").replace(/\D/g, ""), 10);
-
-      const euroMatches = [...text.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)\b/gi)]
-        .map((m) => toNum(m[1]))
-        .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
-      if (euroMatches.length > 0) return euroMatches[0];
-
-      const generic = [...text.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})/g)]
-        .map((m) => toNum(m[1]))
-        .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000 && !(n >= 1900 && n <= 2035));
-
-      return generic[0] || 0;
-    };
-
-    const normalizeFuente = (fuente: unknown, url: unknown): string => {
-      const f = String(fuente || "").toLowerCase();
-      const u = String(url || "").toLowerCase();
-      if (f.includes("wallapop") || u.includes("wallapop")) return "wallapop";
-      if (f.includes("milanuncios") || u.includes("milanuncios")) return "milanuncios";
-      if (f.includes("coches") || u.includes("coches.net")) return "coches";
-      return f || "otro";
-    };
-
-    const toAbsoluteUrl = (rawUrl: string, fuente: string): string => {
-      const value = String(rawUrl || "").trim();
-      if (!value) return "";
-      if (value.startsWith("http://") || value.startsWith("https://")) return value;
-
-      const baseByFuente: Record<string, string> = {
-        milanuncios: "https://www.milanuncios.com",
-        wallapop: "https://www.wallapop.com",
-        coches: "https://www.coches.net",
-      };
-
-      const base = baseByFuente[fuente] || "";
-      if (!base) return "";
-
-      try {
-        return new URL(value, base).toString();
-      } catch {
-        return "";
-      }
-    };
-
-    const isDirectListingUrl = (url: string, fuente: string): boolean => {
-      const u = String(url || "").toLowerCase();
-      if (!u.startsWith("http")) return false;
-
-      if (fuente === "wallapop") {
-        return /\/item\//.test(u) && !u.includes("/app/search");
-      }
-      if (fuente === "coches") {
-        return /-(arvo|covo|fuvivo)\.aspx(\?|$)/.test(u);
-      }
-      if (fuente === "milanuncios") {
-        return u.endsWith(".htm") && !u.includes("?q=") && !u.includes("/busqueda");
-      }
-      return false;
-    };
-
-    const parseYear = (value: string): number => {
-      const m = String(value || "").match(/\b(19|20)\d{2}\b/);
-      return m ? parseInt(m[0], 10) : 0;
-    };
-
-    const parseKm = (value: string): number => {
-      const m = String(value || "").match(/(\d{1,3}(?:[.\s]\d{3})+|\d+)\s*km/i);
-      if (!m) return 0;
-      return parseInt(m[1].replace(/[.\s]/g, ""), 10) || 0;
-    };
-
-    const parsedResults = resultados
-      .map((v: any) => {
-        const title = String(v.titulo || "");
-        const fuente = normalizeFuente(v.fuente, v.url);
-        const absoluteUrl = toAbsoluteUrl(String(v.url || ""), fuente);
-
-        const fullText = `${title} ${String(v.km || "")} ${String(v.anio || "")}`;
-        const anioNum = parseYear(fullText);
-        const kmNum = parseKm(fullText);
-        const precioNum =
-          extractPriceNumberServer(v.precio) ||
-          extractPriceNumberServer(title) ||
-          extractPriceNumberServer(fullText);
-
-        const relevantByTitle = isRelevantToVehicle(title);
-        const hasDirectUrl = isDirectListingUrl(absoluteUrl, fuente);
-
-        const relevanceScore =
-          (relevantByTitle ? 3 : 0) +
-          (hasDirectUrl ? 3 : 0) +
-          (anioNum > 0 ? 1 : 0) +
-          (kmNum > 0 ? 1 : 0);
-
-        return {
-          ...v,
-          fuente,
-          url: hasDirectUrl ? absoluteUrl : "",
-          _precioNum: precioNum,
-          _kmNum: kmNum,
-          _anioNum: anioNum,
-          _relevantByTitle: relevantByTitle,
-          _hasDirectUrl: hasDirectUrl,
-          _relevanceScore: relevanceScore,
-        };
-      })
-      .filter((v: any) => v._precioNum > 0);
-
-    // dedupe by source + price + title/url
+    // Dedupe by source + price + URL
     const seen = new Set<string>();
-    const dedupedResults = parsedResults.filter((v: any) => {
-      const key = `${v.fuente}|${v._precioNum}|${String(v.url || "").toLowerCase()}|${String(v.titulo || "").slice(0, 50).toLowerCase()}`;
+    const deduped = comparableCandidates.filter((c) => {
+      const key = `${c.fuente}|${c.precio}|${c.url.toLowerCase()}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
 
-    dedupedResults.sort((a: any, b: any) => b._relevanceScore - a._relevanceScore);
+    deduped.sort((a, b) => b._score - a._score);
 
-    let vehiculosFiltrados = dedupedResults
-      .filter((v: any) =>
-        v._precioNum >= 3000 &&
-        v._precioNum <= 300000 &&
-        v._relevantByTitle &&
-        (v._anioNum === 0 || Math.abs(v._anioNum - anio) <= 5) &&
-        (v._kmNum === 0 || v._kmNum <= (km || 250000) * 1.8 + 40000)
-      )
-      .slice(0, 20);
+    const vehiculosFiltrados = deduped.slice(0, 15);
 
-    console.log(`Parsed with price ${parsedResults.length}; strict relevant filter -> ${vehiculosFiltrados.length}`);
+    const byFuente = vehiculosFiltrados.reduce(
+      (acc, row) => {
+        acc[row.fuente] += 1;
+        return acc;
+      },
+      { milanuncios: 0, wallapop: 0, coches: 0 } as Record<Fuente, number>,
+    );
 
-    if (vehiculosFiltrados.length < 3) {
-      console.log("Not enough strict relevant comparables, trying relaxed relevant filter...");
-      vehiculosFiltrados = dedupedResults
-        .filter((v: any) =>
-          v._precioNum >= 3000 &&
-          v._precioNum <= 300000 &&
-          v._relevantByTitle
-        )
-        .slice(0, 20);
-      console.log(`Relaxed relevant filter -> ${vehiculosFiltrados.length}`);
-    }
-
-    if (vehiculosFiltrados.length < 3) {
-      const basePrice = Number(precio_venta) > 0
-        ? Number(precio_venta)
-        : (dedupedResults[0]?._precioNum || 25000);
-
-      const syntheticComparables = [
-        {
-          titulo: `${marca} ${modelo} (referencia mercado)` ,
-          precio: `${Math.round(basePrice * 0.9)}€`,
-          km: "",
-          anio: String(anio),
-          fuente: "milanuncios",
-          url: "",
-          _precioNum: Math.round(basePrice * 0.9),
-          _kmNum: 0,
-          _anioNum: anio,
-          _relevantByTitle: true,
-          _hasDirectUrl: false,
-          _relevanceScore: 2,
-        },
-        {
-          titulo: `${marca} ${modelo} (referencia mercado)` ,
-          precio: `${Math.round(basePrice * 1.0)}€`,
-          km: "",
-          anio: String(anio),
-          fuente: "wallapop",
-          url: "",
-          _precioNum: Math.round(basePrice * 1.0),
-          _kmNum: 0,
-          _anioNum: anio,
-          _relevantByTitle: true,
-          _hasDirectUrl: false,
-          _relevanceScore: 2,
-        },
-        {
-          titulo: `${marca} ${modelo} (referencia mercado)` ,
-          precio: `${Math.round(basePrice * 1.1)}€`,
-          km: "",
-          anio: String(anio),
-          fuente: "coches",
-          url: "",
-          _precioNum: Math.round(basePrice * 1.1),
-          _kmNum: 0,
-          _anioNum: anio,
-          _relevantByTitle: true,
-          _hasDirectUrl: false,
-          _relevanceScore: 2,
-        },
-      ];
-
-      vehiculosFiltrados = [...vehiculosFiltrados, ...syntheticComparables].slice(0, 15);
-      console.log(`Synthetic fallback comparables -> ${vehiculosFiltrados.length}`);
-    }
-
-    console.log(`Filtered to ${vehiculosFiltrados.length} comparable vehicles`);
+    console.log(
+      `Comparable vehicles: total=${vehiculosFiltrados.length}, milanuncios=${byFuente.milanuncios}, wallapop=${byFuente.wallapop}, coches=${byFuente.coches}`,
+    );
 
     if (vehiculosFiltrados.length < 3) {
       return new Response(
@@ -627,19 +309,25 @@ serve(async (req) => {
           success: false,
           error: "insufficient_data",
           message:
-            "No hemos encontrado suficientes vehículos similares para hacer un análisis fiable. Prueba a actualizar en unos días.",
+            "No hemos encontrado suficientes anuncios reales y comparables para un análisis fiable. Ajusta marca/modelo o vuelve a intentarlo más tarde.",
+          debug: {
+            discovered_urls: uniqueListingUrls.length,
+            comparables_total: vehiculosFiltrados.length,
+            comparables_por_fuente: byFuente,
+          },
         }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Step 4 — AI Analysis via Lovable AI Gateway
-    const precios = vehiculosFiltrados.map((v: any) => v._precioNum).filter((p: number) => p > 0);
-    const precioMedio = Math.round(precios.reduce((a: number, b: number) => a + b, 0) / precios.length);
+    // 4) Numeric market summary
+    const precios = vehiculosFiltrados.map((v) => v.precio).filter((p) => p > 0);
+    const precioMedio = Math.round(precios.reduce((a, b) => a + b, 0) / precios.length);
     const precioMinimo = Math.min(...precios);
     const precioMaximo = Math.max(...precios);
-    const precioVendedor = precio_venta || 0;
+    const precioVendedor = Number(precio_venta || 0);
 
+    // 5) AI verdict over real comparables
     const prompt = `Eres un experto en valoración de autocaravanas y campers de ocasión en España.
 Analiza el precio de venta propuesto por el vendedor y compáralo con los vehículos similares encontrados en el mercado.
 
@@ -650,7 +338,7 @@ Vehículo a valorar:
 - Precio propuesto por el vendedor: ${precioVendedor}€
 - Provincia: ${provincia}
 
-Datos del mercado actual (${vehiculosFiltrados.length} vehículos similares encontrados):
+Datos del mercado actual (${vehiculosFiltrados.length} anuncios reales):
 - Precio mínimo: ${precioMinimo}€
 - Precio máximo: ${precioMaximo}€
 - Precio medio: ${precioMedio}€
@@ -692,7 +380,6 @@ Responde SOLO en JSON con este formato exacto:
     const aiData = await aiResponse.json();
     const rawContent = aiData.choices?.[0]?.message?.content || "";
 
-    // Extract JSON from response
     let analysis: any;
     try {
       const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
@@ -702,17 +389,16 @@ Responde SOLO en JSON con este formato exacto:
       throw new Error("Failed to parse AI analysis");
     }
 
-    // Prepare comparables with parsed numeric values
-    const comparables = vehiculosFiltrados.map((v: any) => ({
+    const comparables = vehiculosFiltrados.map((v) => ({
       titulo: v.titulo,
-      precio: v._precioNum,
-      km: v.km || (v._kmNum ? `${v._kmNum} km` : ""),
-      anio: v.anio || (v._anioNum ? String(v._anioNum) : ""),
+      precio: v.precio,
+      km: v.km,
+      anio: v.anio,
       url: v.url,
-      fuente: String(v.fuente || "").toLowerCase(),
+      fuente: v.fuente,
     }));
 
-    // Step 5 — Save to database
+    // 6) Persist analysis
     const record = {
       solicitud_id,
       veredicto: analysis.veredicto,
@@ -722,7 +408,7 @@ Responde SOLO en JSON con este formato exacto:
       precio_medio_mercado: analysis.precio_medio_mercado,
       analisis: analysis.analisis,
       consejo: analysis.consejo,
-      num_comparables: analysis.num_comparables || vehiculosFiltrados.length,
+      num_comparables: comparables.length,
       comparables,
     };
 
@@ -749,7 +435,7 @@ Responde SOLO en JSON con este formato exacto:
         error: "server_error",
         message: error instanceof Error ? error.message : "Error desconocido",
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
