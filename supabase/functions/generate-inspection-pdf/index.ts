@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
       // Header bar
       page.drawRectangle({ x: 0, y: PAGE_H - 60, width: PAGE_W, height: 60, color: FOREST });
       page.drawText("RODADO", { x: MARGIN, y: PAGE_H - 40, size: 20, font: timesRoman, color: WHITE });
-      page.drawText("Informe de inspección verificada", { x: MARGIN + 105, y: PAGE_H - 38, size: 10, font: helvetica, color: rgb(1, 1, 1, 0.7) });
+      page.drawText("Informe de inspección verificada", { x: MARGIN + 105, y: PAGE_H - 38, size: 10, font: helvetica, color: rgb(0.85, 0.85, 0.85) });
       // Footer
       page.drawLine({ start: { x: MARGIN, y: 40 }, end: { x: PAGE_W - MARGIN, y: 40 }, thickness: 0.5, color: LIGHT_GRAY });
       page.drawText("rodado.es — Servicio de venta verificada para particulares", { x: MARGIN, y: 26, size: 7, font: helvetica, color: GRAY });
