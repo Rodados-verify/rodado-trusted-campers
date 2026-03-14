@@ -113,10 +113,9 @@ const VendedorFicha = () => {
           <div className="rounded-xl border border-border bg-white p-6 space-y-3">
             <h3 className="font-display text-lg font-semibold text-foreground">Informe de inspección</h3>
             <p className="text-sm text-muted-foreground">Tu informe ya está disponible. Puedes descargarlo y compartirlo con posibles compradores.</p>
-            <Button variant="outline" asChild>
-              <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
-                <Download className="mr-2 h-4 w-4" /> Descargar informe (PDF)
-              </a>
+            <Button variant="outline" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+              {downloadingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              Descargar informe (PDF)
             </Button>
           </div>
         )}
