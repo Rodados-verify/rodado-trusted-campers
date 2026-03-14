@@ -5,6 +5,7 @@ import { SelloRodado } from "@/components/SelloRodado";
 import { VehiculoGallery, type Photo as GalleryPhoto, type PhotoCategory } from "@/components/vehiculo/VehiculoGallery";
 import { VehiculoContactModal } from "@/components/vehiculo/VehiculoContactModal";
 import { VehiculoInspeccion } from "@/components/vehiculo/VehiculoInspeccion";
+import { PdfLeadCaptureModal } from "@/components/vehiculo/PdfLeadCaptureModal";
 import { Button } from "@/components/ui/button";
 import {
   Truck, MapPin, Gauge, CarFront, Shield, Fuel, Cog, Ruler,

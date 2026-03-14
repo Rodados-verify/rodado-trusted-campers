@@ -407,6 +407,18 @@ const InspeccionForm = ({ solicitudId, tallerId, onComplete }: InspeccionFormPro
       // Update solicitud estado
       await supabase.from("solicitudes").update({ estado: "contenido_generado" as any }).eq("id", solicitudId);
 
+      // Trigger PDF generation in background
+      try {
+        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        fetch(`https://${projectId}.supabase.co/functions/v1/generate-inspection-pdf`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ solicitud_id: solicitudId }),
+        });
+      } catch (pdfErr) {
+        console.error("PDF generation trigger failed:", pdfErr);
+      }
+
       toast({ title: "¡Inspección completada!", description: "El equipo está preparando la ficha." });
       onComplete();
     } catch (err: any) {
