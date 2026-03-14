@@ -20,6 +20,7 @@ interface VehiculoInspeccionProps {
   checklistItems: ChecklistItem[];
   informe: Informe | null;
   inspeccion?: any;
+  fotosDesperfectos?: string[];
 }
 
 // Build checklist from inspeccion_detalle estado fields
