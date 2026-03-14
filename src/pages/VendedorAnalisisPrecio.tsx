@@ -127,11 +127,21 @@ const VendedorAnalisisPrecio = () => {
       .update({ precio_venta: nuevoPrecio })
       .eq("id", solicitudId);
     if (error) {
+      console.error("Error updating solicitud price:", error);
       toast({ title: "Error al actualizar precio", variant: "destructive" });
-    } else {
-      setPrecioVenta(nuevoPrecio);
-      toast({ title: "Precio actualizado correctamente" });
+      return;
     }
+    // Also sync the price to the public ficha if it exists
+    const { error: fichaError } = await supabase
+      .from("fichas")
+      .update({ precio_final: nuevoPrecio })
+      .eq("solicitud_id", solicitudId)
+      .eq("activa", true);
+    if (fichaError) {
+      console.error("Error updating ficha price:", fichaError);
+    }
+    setPrecioVenta(nuevoPrecio);
+    toast({ title: "Precio actualizado correctamente" });
   };
 
   if (loading) {
