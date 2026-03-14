@@ -333,6 +333,20 @@ const InspeccionForm = ({ solicitudId, tallerId, onComplete }: InspeccionFormPro
     update("fotos_adicionales_urls", urls);
   };
 
+  // ─── Upload defect photos ───────────────────────────
+  const uploadDefectPhotos = async (files: File[]) => {
+    const urls: string[] = [...data.fotos_desperfectos_urls];
+    for (const file of files) {
+      const ext = file.name.split(".").pop();
+      const path = `taller/${tallerId}/${solicitudId}/desperfectos/${crypto.randomUUID()}.${ext}`;
+      const { error } = await supabase.storage.from("solicitud-fotos").upload(path, file);
+      if (error) continue;
+      const { data: urlData } = supabase.storage.from("solicitud-fotos").getPublicUrl(path);
+      urls.push(urlData.publicUrl);
+    }
+    update("fotos_desperfectos_urls", urls);
+  };
+
   // ─── Complete inspection ─────────────────────────────
   const completeInspection = async () => {
     setCompleting(true);
