@@ -34,6 +34,7 @@ const STATUS_OPTIONS: { value: SolicitudStatus; label: string }[] = [
 
 const AdminSolicitudDetalle = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [solicitud, setSolicitud] = useState<any>(null);
   const [vendedor, setVendedor] = useState<any>(null);
