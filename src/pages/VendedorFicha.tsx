@@ -154,10 +154,9 @@ const VendedorFicha = () => {
               Compartir en WhatsApp
             </Button>
             {pdfUrl && (
-              <Button variant="outline" asChild>
-                <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
-                  <Download className="mr-2 h-4 w-4" /> Informe PDF
-                </a>
+              <Button variant="outline" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+                {downloadingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Informe PDF
               </Button>
             )}
           </div>
