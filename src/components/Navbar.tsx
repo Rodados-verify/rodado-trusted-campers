@@ -20,14 +20,22 @@ export const Navbar = () => {
       }`}
     >
       <div className="container flex h-16 md:h-20 items-center justify-between">
-        <Link to="/" className="font-display text-xl md:text-2xl font-bold text-forest tracking-tight">
-          Rodado
+        <Link to="/" className="flex flex-col">
+          <span className="font-display text-xl md:text-2xl font-bold text-forest tracking-tight leading-none">
+            Rodado
+          </span>
+          <span className="hidden md:block text-[10px] text-muted-foreground leading-tight mt-0.5">
+            Servicio de venta verificada para particulares
+          </span>
         </Link>
 
         {/* Desktop */}
         <div className="hidden md:flex items-center gap-8">
           <a href="#como-funciona" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Cómo funciona
+          </a>
+          <a href="#sello-rodado" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            El sello Rodado
           </a>
           <a href="#talleres" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Para talleres
@@ -51,6 +59,9 @@ export const Navbar = () => {
         <div className="md:hidden bg-background border-t border-border px-6 py-6 space-y-4">
           <a href="#como-funciona" className="block text-sm font-medium text-muted-foreground" onClick={() => setMobileOpen(false)}>
             Cómo funciona
+          </a>
+          <a href="#sello-rodado" className="block text-sm font-medium text-muted-foreground" onClick={() => setMobileOpen(false)}>
+            El sello Rodado
           </a>
           <a href="#talleres" className="block text-sm font-medium text-muted-foreground" onClick={() => setMobileOpen(false)}>
             Para talleres
