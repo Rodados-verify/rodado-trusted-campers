@@ -90,6 +90,9 @@ const AdminSolicitudDetalle = () => {
       const { data: fp } = await supabase.from("fotos_solicitud").select("*").eq("solicitud_id", id).eq("tipo", "procesada");
       setFotosProcesadas(fp || []);
 
+      const { data: inspeccion } = await supabase.from("inspeccion_detalle").select("*").eq("solicitud_id", id).maybeSingle();
+      setInspeccionDetalle(inspeccion);
+
       setLoading(false);
     };
     fetchAll();
