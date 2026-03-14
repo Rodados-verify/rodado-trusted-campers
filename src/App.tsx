@@ -13,6 +13,7 @@ import ResetPassword from "./pages/ResetPassword";
 import VendedorDashboard from "./pages/VendedorDashboard";
 import VendedorFichaPage from "./pages/VendedorFichaPage";
 import VendedorCuentaPage from "./pages/VendedorCuentaPage";
+import VendedorAnalisisPrecioPage from "./pages/VendedorAnalisisPrecioPage";
 import TallerDashboard from "./pages/TallerDashboard";
 import TallerPendiente from "./pages/TallerPendiente";
 import AdminDashboard from "./pages/AdminDashboard";
