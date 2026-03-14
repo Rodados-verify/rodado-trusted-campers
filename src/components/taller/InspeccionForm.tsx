@@ -76,6 +76,8 @@ interface InspeccionData {
   toldo_tiene: boolean; toldo_tipo: string; toldo_estado: string;
   // Extras
   extras_verificados: string[];
+  // Fotos de desperfectos
+  fotos_desperfectos_urls: string[];
   // Documentación
   itv_fecha_caducidad: string;
   historial_mantenimiento: string;
