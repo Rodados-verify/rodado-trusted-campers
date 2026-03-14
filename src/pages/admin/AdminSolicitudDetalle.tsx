@@ -47,6 +47,8 @@ const AdminSolicitudDetalle = () => {
   const [fotosProcesadas, setFotosProcesadas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [deleting, setDeleting] = useState(false);
+
   // Publication form
   const [descripcion, setDescripcion] = useState("");
   const [precioFinal, setPrecioFinal] = useState<number | null>(null);
