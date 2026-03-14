@@ -188,6 +188,15 @@ serve(async (req) => {
       return [...new Set(matches)].slice(0, 10);
     };
 
+    const extractPriceFromText = (text: string): number => {
+      const value = String(text || "").replace(/\s+/g, " ").trim();
+      if (!value) return 0;
+      const priceMatches = [...value.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\s*(€|eur|euros)?/gi)]
+        .map((m) => parseInt(String(m[1]).replace(/[.,\s]/g, ""), 10))
+        .filter((n) => Number.isFinite(n) && n >= 3000 && n <= 300000);
+      return priceMatches[0] || 0;
+    };
+
     const extractListingUrlsFromHtml = (html: string, fuente: string): string[] => {
       if (!html) return [];
       const normalizedHtml = html.replace(/\\\//g, "/");
