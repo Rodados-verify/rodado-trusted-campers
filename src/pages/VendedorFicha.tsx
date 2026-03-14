@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import SolicitudStepper from "@/components/vendedor/SolicitudStepper";
-import { ExternalLink, Copy, Clock, Download } from "lucide-react";
+import { ExternalLink, Copy, Clock, Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const VendedorFicha = () => {
@@ -14,6 +14,7 @@ const VendedorFicha = () => {
   const [fichaSlug, setFichaSlug] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
@@ -59,6 +60,35 @@ const VendedorFicha = () => {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    if (!pdfUrl || downloadingPdf) return;
+
+    setDownloadingPdf(true);
+    try {
+      const filePath = pdfUrl.split("/informes-pdf/")[1] ?? "";
+      const { data, error } = await supabase.storage.from("informes-pdf").download(filePath);
+
+      if (error || !data) throw error || new Error("No se pudo descargar el PDF");
+
+      const blobUrl = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `informe-inspeccion-${fichaSlug || "rodado"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      toast({
+        title: "No se pudo descargar el informe",
+        description: "Inténtalo de nuevo en unos segundos.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-20"><p className="text-muted-foreground">Cargando…</p></div>;
   }
@@ -87,10 +117,9 @@ const VendedorFicha = () => {
           <div className="rounded-xl border border-border bg-white p-6 space-y-3">
             <h3 className="font-display text-lg font-semibold text-foreground">Informe de inspección</h3>
             <p className="text-sm text-muted-foreground">Tu informe ya está disponible. Puedes descargarlo y compartirlo con posibles compradores.</p>
-            <Button variant="outline" asChild>
-              <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
-                <Download className="mr-2 h-4 w-4" /> Descargar informe (PDF)
-              </a>
+            <Button variant="outline" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+              {downloadingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              Descargar informe (PDF)
             </Button>
           </div>
         )}
@@ -129,10 +158,9 @@ const VendedorFicha = () => {
               Compartir en WhatsApp
             </Button>
             {pdfUrl && (
-              <Button variant="outline" asChild>
-                <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
-                  <Download className="mr-2 h-4 w-4" /> Informe PDF
-                </a>
+              <Button variant="outline" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+                {downloadingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Informe PDF
               </Button>
             )}
           </div>
