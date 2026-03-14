@@ -190,21 +190,29 @@ serve(async (req) => {
 
     const extractListingUrlsFromHtml = (html: string, fuente: string): string[] => {
       if (!html) return [];
+      const normalizedHtml = html.replace(/\\\//g, "/");
 
       if (fuente === "wallapop") {
-        const matches = [...html.matchAll(/https:\/\/www\.wallapop\.com\/item\/[^\"'\s<]+/g)].map((m) => m[0]);
+        const matches = [
+          ...normalizedHtml.matchAll(/https?:\/\/www\.wallapop\.com\/item\/[^\"'\s<]+/g),
+          ...normalizedHtml.matchAll(/\/item\/[^\"'\s<]+/g),
+        ].map((m) => m[0]);
         return [...new Set(matches)].slice(0, 20);
       }
 
       if (fuente === "coches") {
         const matches = [
-          ...html.matchAll(/https:\/\/www\.coches\.net\/[^\"'\s<]+-(?:arvo|covo|fuvivo)\.aspx/g),
+          ...normalizedHtml.matchAll(/https?:\/\/www\.coches\.net\/[^\"'\s<]+-(?:arvo|covo|fuvivo)\.aspx/g),
+          ...normalizedHtml.matchAll(/\/[^\"'\s<]+-(?:arvo|covo|fuvivo)\.aspx/g),
         ].map((m) => m[0]);
         return [...new Set(matches)].slice(0, 20);
       }
 
       if (fuente === "milanuncios") {
-        const matches = [...html.matchAll(/https:\/\/www\.milanuncios\.com\/[^\"'\s<]+\.htm/g)].map((m) => m[0]);
+        const matches = [
+          ...normalizedHtml.matchAll(/https?:\/\/www\.milanuncios\.com\/[^\"'\s<]+\.htm/g),
+          ...normalizedHtml.matchAll(/\/[^\"'\s<]+\.htm/g),
+        ].map((m) => m[0]);
         return [...new Set(matches)].slice(0, 20);
       }
 
