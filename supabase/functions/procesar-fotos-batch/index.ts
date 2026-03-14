@@ -21,41 +21,78 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get all original photos
-    const { data: originals, error: fetchErr } = await supabase
-      .from("fotos_solicitud")
-      .select("id, url, solicitud_id, tipo")
-      .eq("tipo", "original");
+    // 1) Collect all photo URLs from inspeccion_detalle
+    const { data: inspecciones, error: inspErr } = await supabase
+      .from("inspeccion_detalle")
+      .select("solicitud_id, foto_frontal_url, foto_lateral_izq_url, foto_lateral_der_url, foto_trasera_url, foto_34_frontal_url, foto_34_trasero_url, foto_interior_conduccion_url, foto_dinette_url, foto_cocina_url, foto_banio_url, foto_cama_url, foto_habitaculo_url, foto_motor_url, foto_bajos_url, foto_neumaticos_url, foto_cuadro_electrico_url, foto_panel_solar_url, fotos_adicionales_urls, fotos_desperfectos_urls");
 
-    if (fetchErr) throw fetchErr;
-    console.log(`Found ${originals?.length || 0} original photos to process`);
+    if (inspErr) throw inspErr;
 
-    // Delete all existing "procesada" records (they point to originals)
-    const { error: delErr } = await supabase
-      .from("fotos_solicitud")
-      .delete()
-      .eq("tipo", "procesada");
-    if (delErr) console.error("Delete error:", delErr);
-    else console.log("Deleted existing procesada records");
+    const photoFields = [
+      "foto_frontal_url", "foto_lateral_izq_url", "foto_lateral_der_url", "foto_trasera_url",
+      "foto_34_frontal_url", "foto_34_trasero_url", "foto_interior_conduccion_url",
+      "foto_dinette_url", "foto_cocina_url", "foto_banio_url", "foto_cama_url",
+      "foto_habitaculo_url", "foto_motor_url", "foto_bajos_url", "foto_neumaticos_url",
+      "foto_cuadro_electrico_url", "foto_panel_solar_url",
+    ];
 
-    // Download watermark once
+    // Collect all URLs with their solicitud_id
+    const allPhotos: { url: string; solicitud_id: string }[] = [];
+    for (const insp of inspecciones || []) {
+      for (const field of photoFields) {
+        const url = (insp as any)[field];
+        if (url && typeof url === "string" && url.startsWith("http")) {
+          allPhotos.push({ url, solicitud_id: insp.solicitud_id });
+        }
+      }
+      // Array fields
+      for (const url of (insp as any).fotos_adicionales_urls || []) {
+        if (url && typeof url === "string" && url.startsWith("http")) {
+          allPhotos.push({ url, solicitud_id: insp.solicitud_id });
+        }
+      }
+      for (const url of (insp as any).fotos_desperfectos_urls || []) {
+        if (url && typeof url === "string" && url.startsWith("http")) {
+          allPhotos.push({ url, solicitud_id: insp.solicitud_id });
+        }
+      }
+    }
+
+    console.log(`Found ${allPhotos.length} photos from inspeccion_detalle`);
+
+    // 2) Clear existing fotos_solicitud and re-insert as originals
+    for (const insp of inspecciones || []) {
+      await supabase.from("fotos_solicitud").delete().eq("solicitud_id", insp.solicitud_id);
+    }
+    console.log("Cleared existing fotos_solicitud records");
+
+    // Insert originals
+    for (const photo of allPhotos) {
+      await supabase.from("fotos_solicitud").insert({
+        solicitud_id: photo.solicitud_id,
+        url: photo.url,
+        tipo: "original",
+      });
+    }
+    console.log(`Inserted ${allPhotos.length} original records`);
+
+    // 3) Download watermark once
     const watermarkUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${WATERMARK_PATH}`;
     const wmRes = await fetch(watermarkUrl, { signal: AbortSignal.timeout(10000) });
     if (!wmRes.ok) throw new Error(`Watermark download failed: ${wmRes.status}`);
     const wmBuffer = new Uint8Array(await wmRes.arrayBuffer());
     console.log("Watermark downloaded");
 
+    // 4) Process each photo
     let processed = 0;
     let failed = 0;
 
-    for (const foto of originals || []) {
+    for (const photo of allPhotos) {
       try {
-        // Download original
-        const imgRes = await fetch(foto.url, { signal: AbortSignal.timeout(15000) });
+        const imgRes = await fetch(photo.url, { signal: AbortSignal.timeout(15000) });
         if (!imgRes.ok) { failed++; continue; }
         const imgBuffer = new Uint8Array(await imgRes.arrayBuffer());
 
-        // Decode
         const originalImage = await decode(imgBuffer) as Image;
         const watermarkImage = await decode(wmBuffer) as Image;
 
@@ -64,7 +101,6 @@ serve(async (req) => {
         const barHeight = Math.round(imgHeight * 0.12);
         const resizedWatermark = watermarkImage.resize(imgWidth, barHeight);
 
-        // Semi-transparency
         for (let x = 1; x <= resizedWatermark.width; x++) {
           for (let y = 1; y <= resizedWatermark.height; y++) {
             const pixel = resizedWatermark.getPixelAt(x, y);
@@ -78,8 +114,7 @@ serve(async (req) => {
         originalImage.composite(resizedWatermark, 0, imgHeight - barHeight);
         const resultBuffer = await originalImage.encodeJPEG(90);
 
-        // Upload
-        const urlObj = new URL(foto.url);
+        const urlObj = new URL(photo.url);
         const storagePath = urlObj.pathname.replace(`/storage/v1/object/public/${BUCKET}/`, "");
         const processedPath = `procesada/${storagePath.replace(/^(taller\/|[^/]+\/)/, "")}`;
 
@@ -92,21 +127,21 @@ serve(async (req) => {
         const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(processedPath);
 
         await supabase.from("fotos_solicitud").insert({
-          solicitud_id: foto.solicitud_id,
+          solicitud_id: photo.solicitud_id,
           url: urlData.publicUrl,
           tipo: "procesada",
         });
 
         processed++;
-        console.log(`Processed ${processed}/${originals?.length}: ${processedPath}`);
+        console.log(`Processed ${processed}/${allPhotos.length}`);
       } catch (e) {
-        console.error(`Failed to process foto ${foto.id}:`, e);
+        console.error(`Failed:`, e);
         failed++;
       }
     }
 
     return new Response(
-      JSON.stringify({ success: true, processed, failed, total: originals?.length || 0 }),
+      JSON.stringify({ success: true, processed, failed, total: allPhotos.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
