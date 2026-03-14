@@ -246,6 +246,9 @@ const VehiculoPublico = () => {
             <div className="mt-4 space-y-2.5">
               <VehiculoContactModal vendedor={vendedor} vehicleName={vehicleName} />
               {showTransport && <TransportButton vendedor={vendedor} vehicleName={vehicleName} />}
+              {informe?.url_pdf && (
+                <PdfLeadCaptureModal solicitudId={solicitud.id} pdfUrl={informe.url_pdf} vehicleName={vehicleName} />
+              )}
             </div>
           </div>
           <div className="rounded-2xl border border-border bg-white p-5 text-center">
