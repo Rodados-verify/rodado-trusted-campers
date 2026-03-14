@@ -155,6 +155,65 @@ const runGoogleSearch = async (apifyToken: string, queries: string[]): Promise<s
   return [...new Set(urls.map((u: unknown) => String(u || "").trim()).filter(Boolean))];
 };
 
+// Scrape listing URLs directly from platform search pages
+const scrapeListingUrlsFromPlatform = async (
+  marca: string,
+  modelo: string,
+): Promise<string[]> => {
+  const urls: string[] = [];
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
+    "Accept-Language": "es-ES,es;q=0.9",
+    Accept: "text/html,application/xhtml+xml",
+  };
+
+  // Milanuncios search
+  const milanQuery = encodeURIComponent(`${marca} ${modelo}`);
+  const milanSearchUrls = [
+    `https://www.milanuncios.com/autocaravanas-de-segunda-mano/?fromSearch=${milanQuery}&orden=relevance`,
+    `https://www.milanuncios.com/campers-de-segunda-mano/?fromSearch=${milanQuery}&orden=relevance`,
+  ];
+
+  for (const searchUrl of milanSearchUrls) {
+    try {
+      const res = await fetch(searchUrl, { headers, signal: AbortSignal.timeout(8000) });
+      if (!res.ok) { await res.text(); continue; }
+      const html = await res.text();
+      // Extract listing URLs from href attributes
+      const listingMatches = [...html.matchAll(/href=["'](\/[^"']*?-\d{8,}\.htm)["']/gi)];
+      for (const m of listingMatches) {
+        urls.push(`https://www.milanuncios.com${m[1]}`);
+      }
+    } catch { /* skip */ }
+  }
+
+  // Coches.net search
+  const cochesQuery = encodeURIComponent(`${marca} ${modelo}`);
+  try {
+    const res = await fetch(
+      `https://www.coches.net/autocaravanas-y-remolques/autocaravanas/?q=${cochesQuery}`,
+      { headers, signal: AbortSignal.timeout(8000) },
+    );
+    if (res.ok) {
+      const html = await res.text();
+      // Extract listing URLs - coches.net uses paths with numeric IDs ending in .aspx
+      const listingMatches = [...html.matchAll(/href=["'](\/[^"']*?\d{5,}[^"']*?\.aspx)["']/gi)];
+      for (const m of listingMatches) {
+        urls.push(`https://www.coches.net${m[1]}`);
+      }
+      // Also try pattern with full URLs
+      const fullUrlMatches = [...html.matchAll(/href=["'](https?:\/\/www\.coches\.net\/[^"']*?\d{5,}[^"']*?)["']/gi)];
+      for (const m of fullUrlMatches) {
+        urls.push(m[1]);
+      }
+    } else {
+      await res.text();
+    }
+  } catch { /* skip */ }
+
+  return [...new Set(urls)];
+
+
 const fetchComparableFromListing = async (
   url: string,
   marcaTokens: string[],
