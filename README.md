@@ -1,73 +1,90 @@
-# Welcome to your Lovable project, now with antigravity
+# 🚐 Rodado — Confianza en cada Kilómetro
 
-## Project info
+**Rodado** es la plataforma líder en la verificación y venta de autocaravanas y campers. Nuestro ecosistema conecta a vendedores particulares con compradores exigentes a través de una red de talleres especializados que garantizan el estado real de cada vehículo.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## 🚀 Propósito del Proyecto
 
-## How can I edit this code?
+El objetivo de Rodado es profesionalizar el mercado de segunda mano de vehículos vivienda, eliminando la incertidumbre mediante el **Sello Rodado**: una certificación técnica exhaustiva que cubre desde la mecánica hasta la habitabilidad.
 
-There are several ways of editing your application.
+## 👥 Usuarios y Funcionalidades
 
-**Use Lovable**
+### 🏠 Landing Page & Público
+- **Buscador de Vehículos**: Exposición de fichas públicas con fotos categorizadas.
+- **Sello Rodado**: Visualización de informes técnicos y puntuaciones de inspección.
+- **Lead Capture**: Descarga de informes detallados tras registro.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+### 👤 Área del Vendedor
+- **Panel de Gestión**: Seguimiento de solicitudes de inspección.
+- **Kit de Publicación**: Herramientas para mejorar la visibilidad del anuncio.
+- **Análisis de Precios**: Herramienta para valorar el vehículo según mercado.
 
-Changes made via Lovable will be committed automatically to this repo.
+### 🛠️ Red de Talleres
+- **Dashboard de Inspección**: Gestión de encargos asignados.
+- **Checklist Técnico**: Registro de puntos de inspección (motor, habitáculo, estanqueidad, etc.).
+- **Gestoría Multimedia**: Subida de fotos originales para procesado automático.
 
-**Use your preferred IDE**
+### ⚙️ Administración
+- **Control Total**: Gestión de usuarios, talleres y validación de solicitudes.
+- **Auditoría**: Supervisión de los informes generados por los talleres.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## 🛠️ Stack Tecnológico
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Frontend
+- **Framework**: [React](https://reactjs.org/) + [Vite](https://vitejs.dev/)
+- **Lenguaje**: [TypeScript](https://www.typescriptlang.org/)
+- **Estilos**: [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/)
+- **Gestión de Estado**: [TanStack Query (React Query)](https://tanstack.com/query/latest)
+- **Enrutado**: [React Router DOM v6](https://reactrouter.com/)
 
-Follow these steps:
+### Backend & Servicios
+- **Base de Datos & Auth**: [Supabase](https://supabase.com/) (PostgreSQL)
+- **Almacenamiento**: Supabase Storage para gestión de imágenes de alta resolución.
+- **Edge Functions**: Lógica de servidor y procesado de datos en el borde.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### Herramientas de Desarrollo
+- **Gestor de Paquetes**: [Bun](https://bun.sh/)
+- **Linter**: ESLint
+- **Testing**: Vitest & Playwright
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## 💻 Configuración Local
 
-# Step 3: Install the necessary dependencies.
-npm i
+1. **Clonar el repositorio**:
+   ```bash
+   git clone https://github.com/Rodados-verify/rodado-trusted-campers.git
+   cd rodado-trusted-campers
+   ```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+2. **Instalar dependencias**:
+   ```bash
+   bun install
+   # o npm install
+   ```
+
+3. **Variables de Entorno**:
+   Crea un archivo `.env` en la raíz con tus credenciales de Supabase:
+   ```env
+   VITE_SUPABASE_URL=tu_url_de_supabase
+   VITE_SUPABASE_ANON_KEY=tu_anon_key
+   ```
+
+4. **Arrancar servidor de desarrollo**:
+   ```bash
+   bun dev
+   # o npm run dev
+   ```
+
+## 🏗️ Estructura del Proyecto
+
+```text
+src/
+├── components/     # UI, Layouts y componentes específicos por rol
+├── contexts/       # Contexto de Autenticación y otros globales
+├── hooks/          # Custom hooks para lógica reutilizable
+├── integrations/   # Configuración de Supabase y clientes externos
+├── lib/            # Utilidades y configuración de librerías
+├── pages/          # Vistas principales organizadas por funcionalidad
+└── supabase/       # Migraciones y Edge Functions
 ```
 
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+---
+*Desarrollado con ❤️ para amantes de la ruta.*
