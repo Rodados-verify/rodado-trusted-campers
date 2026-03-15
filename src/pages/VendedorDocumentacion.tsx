@@ -834,7 +834,7 @@ const VendedorDocumentacion = () => {
                       </div>
                     </div>
                     <Button variant="outline" size="sm" asChild className="gap-2">
-                      <a href={doc.url_pdf} target="_blank" rel="noreferrer">
+                      <a href={doc.url_pdf} download={`${doc.tipo}_${new Date(doc.created_at).getTime()}.pdf`}>
                         <Download className="h-4 w-4" /> Descargar
                       </a>
                     </Button>
