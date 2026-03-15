@@ -79,25 +79,31 @@ Deno.serve(async (req) => {
     let textContent = "";
 
     const prompt = data.tipo === 'contrato' 
-      ? `Eres un experto legal en automoción en España. Redacta un contrato de compraventa de vehículo de segunda mano entre particulares conforme a la legislación española vigente.
-      
-      Datos del vendedor: ${data.vendedor.nombre}, DNI ${data.vendedor.dni}, ${data.vendedor.direccion}, ${data.vendedor.telefono}
-      Datos del comprador: ${data.comprador.nombre}, DNI ${data.comprador.dni}, ${data.comprador.direccion}, ${data.comprador.telefono}
+      ? `Redacta un contrato de compraventa de vehículo de segunda mano entre particulares conforme a la legislación española vigente. El contrato debe ser claro, profesional y proteger los intereses de ambas partes.
+
+      Incluye todas las cláusulas estándar: identificación de las partes, descripción del vehículo, precio y forma de pago, estado del vehículo (vendido en el estado actual, sin garantía implícita por ser entre particulares, salvo vicios ocultos), declaración de cargas y embargos, entrega de documentación, y firmas.
+
+      DATOS PARA EL CONTRATO:
+      Vendedor: ${data.vendedor.nombre}, DNI ${data.vendedor.dni}, ${data.vendedor.direccion}, ${data.vendedor.telefono}
+      Comprador: ${data.comprador.nombre} con DNI ${data.comprador.dni}, domicilio en ${data.comprador.direccion} y teléfono ${data.comprador.telefono}
       Vehículo: ${data.vehiculo.marca} ${data.vehiculo.modelo} (${data.vehiculo.anio}), matrícula ${data.vehiculo.matricula}, bastidor ${data.vehiculo.bastidor}, ${data.vehiculo.km} km
-      Operación: ${data.operacion.precio}€ — Forma de pago: ${data.operacion.forma_pago}
+      Operación: Precio de ${data.operacion.precio}€ abonado mediante ${data.operacion.forma_pago}
       Fecha: ${data.operacion.fecha}
       Observaciones: ${data.operacion.observaciones || "Ninguna"}
       
-      Genera el contrato completo en español formal y jurídico. No incluyas comentarios externos, solo el texto del contrato.`
-      : `Eres un experto legal en automoción en España. Redacta un recibo de señal para la reserva de un vehículo.
+      Genera el contrato completo en español formal y jurídico. Formato limpio, con secciones numeradas. No incluyas comentarios externos.`
+      : `Redacta un recibo oficial de señal / reserva para la compraventa de un vehículo entre particulares en España.
       
-      Datos: Vendedor ${data.vendedor.nombre} (${data.vendedor.dni}), Comprador ${data.comprador.nombre} (${data.comprador.dni})
-      Vehículo: ${data.vehiculo.marca} ${data.vehiculo.modelo}
-      Importe señal: ${data.operacion.importe_senal || 0}€
-      Condiciones: ${data.operacion.condiciones_devolucion}
-      Fecha límite: ${data.operacion.fecha_limite}
+      DATOS: 
+      Vendedor: ${data.vendedor.nombre} (${data.vendedor.dni})
+      Comprador: ${data.comprador.nombre} (${data.comprador.dni})
+      Vehículo: ${data.vehiculo.marca} ${data.vehiculo.modelo} (${data.vehiculo.matricula})
+      Importe entregado: ${data.operacion.importe_senal || 0}€ en concepto de señal.
+      Precio total pactado: ${data.operacion.precio}€
+      Condiciones de devolución: ${data.operacion.condiciones_devolucion}
+      Fecha límite para formalizar la venta: ${data.operacion.fecha_limite}
       
-      Genera el texto formal del recibo de señal.`;
+      Genera el texto formal del recibo de señal en español jurídico.`;
 
     if (lovableApiKey) {
       const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -107,12 +113,12 @@ Deno.serve(async (req) => {
           Authorization: `Bearer ${lovableApiKey}`,
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-2.0-flash", // Use latest available
           messages: [
-            { role: "system", content: "Responde solo con el texto legal solicitado, sin introducciones ni despedidas." },
+            { role: "system", content: "Actúa como un notario español experto en contratos privados. Escribe solo el contenido del contrato." },
             { role: "user", content: prompt }
           ],
-          temperature: 0.5,
+          temperature: 0.3,
         }),
       });
 

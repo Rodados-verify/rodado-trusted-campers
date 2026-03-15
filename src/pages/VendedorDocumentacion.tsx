@@ -190,25 +190,40 @@ const VendedorDocumentacion = () => {
           if (localCl) setChecklist(JSON.parse(localCl));
         }
 
-        // Load history with error handling and fallback
-        try {
-          const { data: hist, error: histError } = await (supabase as any)
-            .from("documentos_venta")
-            .select("*")
-            .eq("solicitud_id", sol.id)
-            .order("created_at", { ascending: false });
-          
-          if (histError) {
+        // Merge local and remote history
+        const fetchHistory = async () => {
+          try {
+            const { data: remoteHist } = await (supabase as any)
+              .from("documentos_venta")
+              .select("*")
+              .eq("solicitud_id", sol.id)
+              .order("created_at", { ascending: false });
+            
+            const localHist = JSON.parse(localStorage.getItem(`historial_${sol.id}`) || "[]");
+            
+            // Combine and sort by date
+            const combined = [...localHist, ...(remoteHist || [])].sort((a, b) => 
+              new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            );
+            
+            // Remove potential duplicates if a local was synced to remote
+            const seen = new Set();
+            const unique = combined.filter(item => {
+              const duplicate = seen.has(item.id) || (item.url_pdf && seen.has(item.url_pdf));
+              seen.add(item.id);
+              if (item.url_pdf) seen.add(item.url_pdf);
+              return !duplicate;
+            });
+
+            setDocsGenerados(unique);
+          } catch (err) {
+            console.error("Error loading document history:", err);
             const localHist = localStorage.getItem(`historial_${sol.id}`);
             if (localHist) setDocsGenerados(JSON.parse(localHist));
-          } else if (hist) {
-            setDocsGenerados(hist);
           }
-        } catch (err) {
-          console.error("Error loading document history:", err);
-          const localHist = localStorage.getItem(`historial_${sol.id}`);
-          if (localHist) setDocsGenerados(JSON.parse(localHist));
-        }
+        };
+
+        fetchHistory();
       }
       setLoading(false);
     };
@@ -217,12 +232,21 @@ const VendedorDocumentacion = () => {
   }, [user]);
 
   const loadHistory = async (solId: string) => {
-    const { data } = await (supabase as any)
-      .from("documentos_venta")
-      .select("*")
-      .eq("solicitud_id", solId)
-      .order("created_at", { ascending: false });
-    if (data) setDocsGenerados(data);
+    try {
+      const { data: remoteData } = await (supabase as any)
+        .from("documentos_venta")
+        .select("*")
+        .eq("solicitud_id", solId)
+        .order("created_at", { ascending: false });
+      
+      const localHist = JSON.parse(localStorage.getItem(`historial_${solId}`) || "[]");
+      const combined = [...localHist, ...(remoteData || [])].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setDocsGenerados(combined);
+    } catch (err) {
+      console.error("Error reloading history:", err);
+    }
   };
 
   const handleChecklistChange = async (doc: keyof ChecklistDocs, status: DocumentStatus) => {
@@ -255,10 +279,33 @@ const VendedorDocumentacion = () => {
     }
   };
 
-  const createFallbackPDF = (tipo: 'contrato' | 'señal', data: any) => {
+  const createFallbackPDF = (tipo: 'contrato' | 'señal', savedData?: any, autoDownload = false) => {
     const doc = new jsPDF();
-    doc.setFontSize(14);
     
+    // Use saved data or fall back to current state
+    const op = savedData?.operacion || {
+      ...operacionData,
+      fecha: operacionData.fecha.toISOString(),
+      fechaLimite: operacionData.fechaLimite.toISOString()
+    };
+    const vend = savedData?.vendedor || {
+      nombre: usuario?.nombre,
+      dni: vendedorExtraData.dni,
+      direccion: vendedorExtraData.direccion,
+      telefono: usuario?.telefono || ""
+    };
+    const comp = savedData?.comprador || compradorData;
+    const veh = savedData?.vehiculo || {
+      marca: solicitud?.marca,
+      modelo: solicitud?.modelo,
+      anio: solicitud?.anio,
+      matricula: vehiculoExtraData.matricula,
+      bastidor: vehiculoExtraData.bastidor,
+      km: solicitud?.km,
+      provincia: solicitud?.provincia
+    };
+
+    doc.setFontSize(14);
     let y = 20;
 
     const checkPageBreak = (neededLines: number) => {
@@ -279,73 +326,68 @@ const VendedorDocumentacion = () => {
       y += (split.length * (size * 0.45));
     };
 
-    const fechaFormateada = format(operacionData.fecha, "dd 'de' MMMM 'de' yyyy", { locale: es });
+    const fechaObj = new Date(op.fecha);
+    const fechaFormateada = format(fechaObj, "dd 'de' MMMM 'de' yyyy", { locale: es });
 
     if (tipo === 'contrato') {
       addLine("CONTRATO DE COMPRAVENTA DE VEHÍCULO USADO ENTRE PARTICULARES", true, 14, 0);
-      addLine(`En ${solicitud?.provincia || "lugar de firma"}, a ${fechaFormateada}`, false, 11, 10);
+      addLine(`En ${veh.provincia || "lugar de firma"}, a ${fechaFormateada}`, false, 11, 10);
       
       addLine("REUNIDOS", true, 12, 10);
-      addLine(`De una parte, como VENDEDOR: D./Dña. ${usuario?.nombre || "____________________"}, mayor de edad, con DNI/NIF ${vendedorExtraData.dni || "__________"} y domicilio en ${vendedorExtraData.direccion || "____________________"}.`, false, 11, 5);
-      addLine(`De otra parte, como COMPRADOR: D./Dña. ${compradorData.nombre || "____________________"}, mayor de edad, con DNI/NIF ${compradorData.dni || "__________"} y domicilio en ${compradorData.direccion || "____________________"}.`, false, 11, 5);
+      addLine(`De una parte, como VENDEDOR: D./Dña. ${vend.nombre || "____________________"}, mayor de edad, con DNI/NIF ${vend.dni || "__________"} y domicilio en ${vend.direccion || "____________________"}.`, false, 11, 5);
+      addLine(`De otra parte, como COMPRADOR: D./Dña. ${comp.nombre || "____________________"}, mayor de edad, con DNI/NIF ${comp.dni || "__________"} y domicilio en ${comp.direccion || "____________________"}.`, false, 11, 5);
       
       addLine("Ambas partes intervienen en su propio nombre y derecho, y se reconocen recíprocamente la capacidad legal y necesaria para la celebración del presente CONTRATO DE COMPRAVENTA, de acuerdo con las siguientes:", false, 11, 5);
 
       addLine("CLÁUSULAS", true, 12, 10);
       
-      addLine(`PRIMERA.- El VENDEDOR es propietario del vehículo marca ${solicitud?.marca || "__________"}, modelo ${solicitud?.modelo || "__________"}, matrícula ${vehiculoExtraData.matricula || "__________"}, número de bastidor ${vehiculoExtraData.bastidor || "__________"} y con ${solicitud?.km || "0"} kilómetros indicados en el odómetro.`, false, 11, 5);
+      addLine(`PRIMERA.- El VENDEDOR es propietario del vehículo marca ${veh.marca || "__________"}, modelo ${veh.modelo || "__________"}, matrícula ${veh.matricula || "__________"}, número de bastidor ${veh.bastidor || "__________"} y con ${veh.km || "0"} kilómetros indicados en el odómetro.`, false, 11, 5);
       
-      addLine(`SEGUNDA.- El VENDEDOR vende al COMPRADOR el vehículo reseñado en la cláusula anterior por la cantidad de ${operacionData.precioFinal || "0"} EUROS (${operacionData.precioFinal || "0"} €).`, false, 11, 5);
+      addLine(`SEGUNDA.- El VENDEDOR vende al COMPRADOR el vehículo reseñado en la cláusula anterior por la cantidad de ${op.precioFinal || op.precio || "0"} EUROS.`, false, 11, 5);
       
-      addLine(`TERCERA.- El pago de la cantidad de ${operacionData.precioFinal || "0"} EUROS se realiza mediante ${operacionData.formaPago || "__________"} en el momento de la firma de este contrato. En caso de existir una señal previa entregada de ${operacionData.importeSenal || "0"} EUROS, ésta se descuenta del precio final total, sirviendo este documento de eficaz carta de pago.`, false, 11, 5);
+      addLine(`TERCERA.- El pago se realiza mediante ${op.formaPago || "__________"} en el momento de la firma de este contrato. En caso de existir una señal previa entregada de ${op.importeSenal || "0"} EUROS, ésta se descuenta del precio final total.`, false, 11, 5);
       
-      addLine(`CUARTA.- El COMPRADOR declara conocer el estado actual físico y mecánico del vehículo. El vehículo se vende en el estado actual en el que se encuentra, eximiendo al VENDEDOR de garantía alguna sobre averías futuras o desgastes propios del uso, salvo aquellos vicios o defectos ocultos sujetos al artículo 1484 del Código Civil.`, false, 11, 5);
+      addLine(`CUARTA.- El COMPRADOR declara conocer el estado actual físico y mecánico del vehículo. El vehículo se vende en el estado actual en el que se encuentra, eximiendo al VENDEDOR de garantía alguna sobre averías futuras, salvo aquellos vicios ocultos sujetos al Código Civil.`, false, 11, 5);
       
-      addLine(`QUINTA.- El VENDEDOR declara responsablemente que sobre el vehículo no pesa embargo, reserva de dominio, precinto, cargas impositivas, deudas, ni cualquier otra limitación de disposición. En caso contrario, el VENDEDOR se hace cargo de su cancelación y costas.`, false, 11, 5);
+      addLine(`QUINTA.- El VENDEDOR declara responsablemente que sobre el vehículo no pesa embargo ni cargas. En caso contrario, el VENDEDOR se hace cargo de su cancelación.`, false, 11, 5);
       
-      addLine(`SEXTA.- Desde la fecha y hora de la firma de este contrato, el COMPRADOR asume la posesión del vehículo y se hace cargo de cuantas responsabilidades civiles, administrativas o de tráfico puedan contraerse por la propiedad y uso del mismo, eximiendo al VENDEDOR de cualquier contingencia derivada desde este mismo instante. El COMPRADOR se compromete a realizar la transferencia comercial en las próximas semanas.`, false, 11, 5);
+      addLine(`SEXTA.- Desde la firma de este contrato, el COMPRADOR asume la posesión del vehículo y cuantas responsabilidades se deriven del mismo.`, false, 11, 5);
       
-      if (operacionData.observaciones) {
-        addLine(`SÉPTIMA (OBSERVACIONES).- ${operacionData.observaciones}`, false, 11, 5);
+      if (op.observaciones) {
+        addLine(`SÉPTIMA (OBSERVACIONES).- ${op.observaciones}`, false, 11, 5);
       }
 
-      addLine("Y para que así conste, y en prueba de conformidad con todo lo anterior, ambas partes firman el presente contrato por duplicado, a un solo efecto, en el lugar y fecha arriba indicados.", false, 11, 10);
+      addLine("Y para que así conste ambos firman el presente contrato por duplicado en el lugar y fecha arriba indicados.", false, 11, 10);
 
     } else {
       addLine("RECIBO DE SEÑAL / RESERVA DE VEHÍCULO", true, 14, 0);
-      addLine(`En ${solicitud?.provincia || "lugar de firma"}, a ${fechaFormateada}`, false, 11, 10);
+      addLine(`En ${veh.provincia || "lugar de firma"}, a ${fechaFormateada}`, false, 11, 10);
       
       addLine("REUNIDOS", true, 12, 10);
-      addLine(`VENDEDOR: D./Dña. ${usuario?.nombre || "____________________"}, constando DNI/NIF ${vendedorExtraData.dni || "__________"}.`, false, 11, 5);
-      addLine(`COMPRADOR: D./Dña. ${compradorData.nombre || "____________________"}, constando DNI/NIF ${compradorData.dni || "__________"}.`, false, 11, 5);
+      addLine(`VENDEDOR: D./Dña. ${vend.nombre || "____________________"}, DNI/NIF ${vend.dni || "__________"}.`, false, 11, 5);
+      addLine(`COMPRADOR: D./Dña. ${comp.nombre || "____________________"}, DNI/NIF ${comp.dni || "__________"}.`, false, 11, 5);
       
       addLine("ACUERDAN", true, 12, 10);
       
-      addLine(`PRIMERO.- El COMPRADOR hace entrega al VENDEDOR en este acto de la cantidad de ${operacionData.importeSenal || "0"} EUROS (${operacionData.importeSenal || "0"} €) en concepto de SEÑAL o RESERVA firme para la futura compra del vehículo marca ${solicitud?.marca || "__________"}, modelo ${solicitud?.modelo || "__________"}, y matrícula ${vehiculoExtraData.matricula || "__________"}.`, false, 11, 5);
+      addLine(`PRIMERO.- El COMPRADOR hace entrega al VENDEDOR de la cantidad de ${op.importeSenal || "0"} EUROS en concepto de SEÑAL o RESERVA firme para el vehículo matrícula ${veh.matricula || "__________"}.`, false, 11, 5);
       
-      addLine(`SEGUNDO.- El precio total acordado para la futura compraventa se fija en ${operacionData.precioFinal || "0"} EUROS.`, false, 11, 5);
+      addLine(`SEGUNDO.- El precio total acordado se fija en ${op.precioFinal || op.precio || "0"} EUROS.`, false, 11, 5);
       
-      addLine(`TERCERO.- Ambas partes fijan como fecha límite improrrogable para formalizar el contrato de compraventa y abonar la cantidad restante el día ${format(operacionData.fechaLimite, "dd 'de' MMMM 'de' yyyy", { locale: es })}.`, false, 11, 5);
+      const fechaLim = new Date(op.fechaLimite);
+      addLine(`TERCERO.- Ambas partes fijan como fecha límite para formalizar la venta el día ${format(fechaLim, "dd 'de' MMMM 'de' yyyy", { locale: es })}.`, false, 11, 5);
       
-      let condicionesText = "";
-      if (operacionData.condicionesDevolucion === "precio") condicionesText = "La señal se descontará integramente del precio final estipulado en la compra.";
-      else if (operacionData.condicionesDevolucion === "pierde") condicionesText = "Si el COMPRADOR desiste de la compraventa antes de la fecha límite, perderá la totalidad de la cantidad entregada como señal a favor del VENDEDOR. Si es el VENDEDOR quien desiste, devolverá la señal duplicada al COMPRADOR.";
-      else if (operacionData.condicionesDevolucion === "vendedor") condicionesText = "Si el VENDEDOR se niega a vender el vehículo en las condiciones pactadas, deberá devolver la señal duplicada al COMPRADOR.";
-      else condicionesText = operacionData.condicionesDevolucion || "La señal entregada es firme y condiciona la reserva excluyendo a otros posibles compradores.";
-      
-      addLine(`CUARTO (CONDICIONES).- ${condicionesText}`, false, 11, 5);
-      
-      addLine("Y en prueba de la más estricta conformidad, ambas partes firman el presente recibo por duplicado.", false, 11, 10);
+      addLine(`CUARTO (CONDICIONES).- ${op.condicionesDevolucion}`, false, 11, 5);
     }
 
     checkPageBreak(5);
     y += 20;
     addLine("Firma de EL VENDEDOR                                                 Firma de EL COMPRADOR", true, 12, 0);
     
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
+    if (autoDownload) {
+      doc.save(`${tipo}_${Date.now()}.pdf`);
+    }
     
-    return url;
+    return URL.createObjectURL(doc.output('blob'));
   };
 
   const calculateProgress = () => {
@@ -393,49 +435,62 @@ const VendedorDocumentacion = () => {
     setIsGenerating(true);
     const toastId = toast.loading(`Generando ${tipo}...`);
 
+    const metadata = {
+      vendedor: {
+        nombre: usuario.nombre,
+        dni: vendedorExtraData.dni,
+        direccion: vendedorExtraData.direccion,
+        telefono: usuario.telefono || ""
+      },
+      comprador: compradorData,
+      vehiculo: {
+        marca: solicitud.marca,
+        modelo: solicitud.modelo,
+        anio: solicitud.anio,
+        matricula: vehiculoExtraData.matricula,
+        bastidor: vehiculoExtraData.bastidor,
+        km: solicitud.km,
+        provincia: solicitud.provincia
+      },
+      operacion: {
+        precioFinal: operacionData.precioFinal,
+        formaPago: operacionData.formaPago,
+        fecha: operacionData.fecha.toISOString(),
+        importeSenal: operacionData.importeSenal,
+        observaciones: operacionData.observaciones,
+        fechaLimite: operacionData.fechaLimite.toISOString(),
+        condicionesDevolucion: operacionData.condicionesDevolucion
+      }
+    };
+
     try {
       const { data, error } = await supabase.functions.invoke('generar-contrato', {
         body: {
           solicitud_id: solicitud.id,
           tipo,
-          vendedor: {
-            nombre: usuario.nombre,
-            dni: vendedorExtraData.dni,
-            direccion: vendedorExtraData.direccion,
-            telefono: usuario.telefono || ""
-          },
-          comprador: compradorData,
-          vehiculo: {
-            marca: solicitud.marca,
-            modelo: solicitud.modelo,
-            anio: solicitud.anio,
-            matricula: vehiculoExtraData.matricula,
-            bastidor: vehiculoExtraData.bastidor,
-            km: solicitud.km
-          },
+          vendedor: metadata.vendedor,
+          comprador: metadata.comprador,
+          vehiculo: metadata.vehiculo,
           operacion: {
-            precio: operacionData.precioFinal,
-            forma_pago: operacionData.formaPago,
+            ...metadata.operacion,
             fecha: format(operacionData.fecha, "dd/MM/yyyy"),
-            importe_senal: operacionData.importeSenal,
-            observaciones: operacionData.observaciones,
-            fecha_limite: format(operacionData.fechaLimite, "dd/MM/yyyy"),
-            condiciones_devolucion: operacionData.condicionesDevolucion
+            fecha_limite: format(operacionData.fechaLimite, "dd/MM/yyyy")
           }
         }
       });
 
       if (error) {
         console.warn("Respuesta del servidor falló. Guardando PDF virtualmente en tu sesión...");
-        const fallbackUrl = createFallbackPDF(tipo, {});
+        createFallbackPDF(tipo, metadata);
         
-        // Save history to localStorage
+        // Save history to localStorage with full metadata
         const newHist = {
           id: `local-${Date.now()}`,
           solicitud_id: solicitud.id,
           tipo,
-          url_pdf: fallbackUrl,
-          datos_comprador: compradorData,
+          url_pdf: '', // we re-generate on click
+          isLocal: true,
+          metadata,
           created_at: new Date().toISOString()
         };
         const localHist = JSON.parse(localStorage.getItem(`historial_${solicitud.id}`) || "[]");
@@ -450,14 +505,15 @@ const VendedorDocumentacion = () => {
       loadHistory(solicitud.id);
     } catch (error: any) {
       console.warn("Error de red. Generando PDF virtual...");
-      const fallbackUrl = createFallbackPDF(tipo, {});
+      createFallbackPDF(tipo, metadata);
       
       const newHist = {
         id: `local-${Date.now()}`,
         solicitud_id: solicitud.id,
         tipo,
-        url_pdf: fallbackUrl,
-        datos_comprador: compradorData,
+        url_pdf: '',
+        isLocal: true,
+        metadata,
         created_at: new Date().toISOString()
       };
       const localHist = JSON.parse(localStorage.getItem(`historial_${solicitud.id}`) || "[]");
@@ -467,6 +523,20 @@ const VendedorDocumentacion = () => {
       toast.success(`Documento generado correctamente (Modo Offline)`, { id: toastId });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleDownload = (docItem: any) => {
+    if (docItem.isLocal || docItem.id?.toString().startsWith('local-')) {
+      createFallbackPDF(docItem.tipo, docItem.metadata, true);
+    } else {
+      const a = document.createElement('a');
+      a.href = docItem.url_pdf;
+      a.target = "_blank";
+      a.download = `${docItem.tipo}_${new Date(docItem.created_at).getTime()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
   };
 
@@ -833,10 +903,8 @@ const VendedorDocumentacion = () => {
                         </p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" asChild className="gap-2">
-                      <a href={doc.url_pdf} download={`${doc.tipo}_${new Date(doc.created_at).getTime()}.pdf`}>
-                        <Download className="h-4 w-4" /> Descargar
-                      </a>
+                    <Button variant="outline" size="sm" onClick={() => handleDownload(doc)} className="gap-2">
+                       <Download className="h-4 w-4" /> Descargar
                     </Button>
                   </div>
                 ))}
