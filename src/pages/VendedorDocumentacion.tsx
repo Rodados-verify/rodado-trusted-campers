@@ -526,17 +526,33 @@ const VendedorDocumentacion = () => {
     }
   };
 
-  const handleDownload = (docItem: any) => {
+  const handleDownload = async (docItem: any) => {
     if (docItem.isLocal || docItem.id?.toString().startsWith('local-')) {
       createFallbackPDF(docItem.tipo, docItem.metadata, true);
+    } else if (docItem.url_pdf) {
+      try {
+        const response = await fetch(docItem.url_pdf);
+        if (!response.ok) throw new Error("Fetch failed");
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${docItem.tipo}_${new Date(docItem.created_at).getTime()}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch {
+        // Fallback: open in new tab
+        window.open(docItem.url_pdf, "_blank");
+      }
     } else {
-      const a = document.createElement('a');
-      a.href = docItem.url_pdf;
-      a.target = "_blank";
-      a.download = `${docItem.tipo}_${new Date(docItem.created_at).getTime()}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // No URL and not local — regenerate from metadata if available
+      if (docItem.metadata) {
+        createFallbackPDF(docItem.tipo, docItem.metadata, true);
+      } else {
+        toast.error("No se puede descargar este documento. Genera uno nuevo.");
+      }
     }
   };
 
