@@ -63,6 +63,10 @@ const VendedorDocumentacion = () => {
   const { width, height } = useWindowSize();
   const [solicitud, setSolicitud] = useState<any>(null);
   const [usuario, setUsuario] = useState<any>(null);
+  const [vendedorExtraData, setVendedorExtraData] = useState({
+    dni: "",
+    direccion: ""
+  });
   const [checklist, setChecklist] = useState<ChecklistDocs>({
     permiso_circulacion: 'no_tengo',
     ficha_tecnica: 'no_tengo',
@@ -127,8 +131,13 @@ const VendedorDocumentacion = () => {
         .eq("user_id", user.id)
         .single();
       
-      if (!userProfile) return;
-      setUsuario(userProfile);
+      if (userProfile) {
+        setUsuario(userProfile);
+        setVendedorExtraData({
+          dni: (userProfile as any).dni || "",
+          direccion: (userProfile as any).direccion || ""
+        });
+      }
 
       const { data: sol } = await (supabase as any)
         .from("solicitudes")
@@ -273,8 +282,8 @@ const VendedorDocumentacion = () => {
           tipo,
           vendedor: {
             nombre: usuario.nombre,
-            dni: usuario.dni || "", // Need to ensure user has DNI in profile
-            direccion: usuario.direccion || "",
+            dni: vendedorExtraData.dni,
+            direccion: vendedorExtraData.direccion,
             telefono: usuario.telefono || ""
           },
           comprador: compradorData,
@@ -474,10 +483,27 @@ const VendedorDocumentacion = () => {
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div className="space-y-4">
                 <h3 className="font-bold border-b pb-1 text-sm">Vendedor (Tus datos)</h3>
-                <div className="space-y-2 text-sm">
+                <div className="space-y-3 pt-2 text-sm">
                   <p><strong>Nombre:</strong> {usuario?.nombre}</p>
                   <p><strong>Teléfono:</strong> {usuario?.telefono}</p>
-                  <p className="text-xs text-muted-foreground italic">Asegúrate de tener tu DNI en el perfil</p>
+                  <div className="space-y-1 pt-2">
+                    <Label className="text-xs">Tu DNI / NIE</Label>
+                    <Input 
+                      placeholder="DNI" 
+                      className="h-8" 
+                      value={vendedorExtraData.dni} 
+                      onChange={e => setVendedorExtraData(prev => ({ ...prev, dni: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Tu Dirección</Label>
+                    <Input 
+                      placeholder="Dirección completa" 
+                      className="h-8" 
+                      value={vendedorExtraData.direccion} 
+                      onChange={e => setVendedorExtraData(prev => ({ ...prev, direccion: e.target.value }))}
+                    />
+                  </div>
                 </div>
                 <div className="space-y-3 pt-4 border-t">
                   <h3 className="font-bold text-sm">Datos del Vehículo</h3>
