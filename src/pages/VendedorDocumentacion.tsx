@@ -160,31 +160,41 @@ const VendedorDocumentacion = () => {
           anio: sol.anio || 2020
         }));
 
-        // Load checklist
-        const { data: clData } = await (supabase as any)
-          .from("checklist_documentos")
-          .select("*")
-          .eq("solicitud_id", sol.id)
-          .maybeSingle();
-        
-        if (clData) {
-          setChecklist({
-            permiso_circulacion: clData.permiso_circulacion as DocumentStatus,
-            ficha_tecnica: clData.ficha_tecnica as DocumentStatus,
-            itv_vigor: clData.itv_vigor as DocumentStatus,
-            historial_mantenimiento: clData.historial_mantenimiento as DocumentStatus,
-            informe_cargas: clData.informe_cargas as DocumentStatus,
-            dos_llaves: clData.dos_llaves as DocumentStatus
-          });
+        // Load checklist with error handling
+        try {
+          const { data: clData, error: clError } = await (supabase as any)
+            .from("checklist_documentos")
+            .select("*")
+            .eq("solicitud_id", sol.id)
+            .maybeSingle();
+          
+          if (clError) {
+            console.warn("Checklist table may not exist yet:", clError.message);
+          } else if (clData) {
+            setChecklist({
+              permiso_circulacion: clData.permiso_circulacion as DocumentStatus,
+              ficha_tecnica: clData.ficha_tecnica as DocumentStatus,
+              itv_vigor: clData.itv_vigor as DocumentStatus,
+              historial_mantenimiento: clData.historial_mantenimiento as DocumentStatus,
+              informe_cargas: clData.informe_cargas as DocumentStatus,
+              dos_llaves: clData.dos_llaves as DocumentStatus
+            });
+          }
+        } catch (err) {
+          console.error("Error loading checklist:", err);
         }
 
-        // Load history
-        const { data: hist } = await (supabase as any)
-          .from("documentos_venta")
-          .select("*")
-          .eq("solicitud_id", sol.id)
-          .order("created_at", { ascending: false });
-        if (hist) setDocsGenerados(hist);
+        // Load history with error handling
+        try {
+          const { data: hist, error: histError } = await (supabase as any)
+            .from("documentos_venta")
+            .select("*")
+            .eq("solicitud_id", sol.id)
+            .order("created_at", { ascending: false });
+          if (!histError && hist) setDocsGenerados(hist);
+        } catch (err) {
+          console.error("Error loading document history:", err);
+        }
       }
       setLoading(false);
     };
@@ -208,7 +218,7 @@ const VendedorDocumentacion = () => {
 
     try {
       if (solicitud) {
-        console.log("Saving checklist for solicitud:", solicitud.id);
+        console.log("Saving checklist for solicitud:", solicitud.id, doc, status);
         const { error } = await (supabase as any)
           .from("checklist_documentos")
           .upsert({
@@ -218,7 +228,12 @@ const VendedorDocumentacion = () => {
           }, { onConflict: 'solicitud_id' });
         
         if (error) {
-          console.error("Supabase upsert error:", error);
+          console.error("Supabase upsert error detail:", error);
+          if (error.code === "P0001" || error.message?.includes("relation") || error.message?.includes("not found")) {
+            toast.error("Error: La tabla de base de datos no existe. Por favor ejecuta la migración SQL.");
+          } else {
+            toast.error(`Error al guardar: ${error.message}`);
+          }
           throw error;
         }
       }
@@ -273,7 +288,7 @@ const VendedorDocumentacion = () => {
     }
 
     setIsGenerating(true);
-    toast.info(`Generando ${tipo}... esto puede tardar unos segundos`);
+    const toastId = toast.loading(`Generando ${tipo}...`);
 
     try {
       const { data, error } = await supabase.functions.invoke('generar-contrato', {
@@ -307,13 +322,17 @@ const VendedorDocumentacion = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Edge function error:", error);
+        toast.error("Error en el servidor: No se pudo generar el documento.", { id: toastId });
+        return;
+      }
 
-      toast.success(`${tipo === 'contrato' ? 'Contrato' : 'Recibo'} generado correctamente`);
+      toast.success(`${tipo === 'contrato' ? 'Contrato' : 'Recibo'} generado correctamente`, { id: toastId });
       loadHistory(solicitud.id);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating contract:", error);
-      toast.error("No se pudo generar el documento. Comprueba que el servidor esté activo.");
+      toast.error(`Error: ${error.message || "No se pudo conectar con el servidor"}. Asegúrate de haber desplegado la función.`, { id: toastId });
     } finally {
       setIsGenerating(false);
     }
