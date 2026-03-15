@@ -1,6 +1,9 @@
-
 -- Extend solicitudes with estado_venta
 ALTER TABLE public.solicitudes ADD COLUMN IF NOT EXISTS estado_venta TEXT DEFAULT 'en_venta';
+
+-- Extend usuarios with DNI and Direccion if they don't exist
+ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS dni TEXT;
+ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS direccion TEXT;
 
 -- Create checklist_documentos table
 CREATE TABLE IF NOT EXISTS public.checklist_documentos (

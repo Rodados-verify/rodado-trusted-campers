@@ -75,6 +75,8 @@ const VendedorDocumentacion = () => {
   const [loading, setLoading] = useState(true);
   const [savingChecklist, setSavingChecklist] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [docsGenerados, setDocsGenerados] = useState<any[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Form states for modules
   const [compradorData, setCompradorData] = useState({
@@ -83,6 +85,10 @@ const VendedorDocumentacion = () => {
     direccion: "",
     telefono: ""
   });
+  const [vehiculoExtraData, setVehiculoExtraData] = useState({
+    matricula: "",
+    bastidor: ""
+  });
   const [operacionData, setOperacionData] = useState({
     precioFinal: 0,
     formaPago: "transferencia",
@@ -90,7 +96,9 @@ const VendedorDocumentacion = () => {
     tieneSenal: false,
     importeSenal: 0,
     incluyeTransporte: false,
-    observaciones: ""
+    observaciones: "",
+    fechaLimite: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 days from now
+    condicionesDevolucion: "Se descuenta del precio final. Se pierde si el comprador desiste."
   });
 
   // ITP Calculator states
@@ -160,12 +168,29 @@ const VendedorDocumentacion = () => {
             dos_llaves: clData.dos_llaves as DocumentStatus
           });
         }
+
+        // Load history
+        const { data: hist } = await (supabase as any)
+          .from("documentos_venta")
+          .select("*")
+          .eq("solicitud_id", sol.id)
+          .order("created_at", { ascending: false });
+        if (hist) setDocsGenerados(hist);
       }
       setLoading(false);
     };
 
     loadData();
   }, [user]);
+
+  const loadHistory = async (solId: string) => {
+    const { data } = await (supabase as any)
+      .from("documentos_venta")
+      .select("*")
+      .eq("solicitud_id", solId)
+      .order("created_at", { ascending: false });
+    if (data) setDocsGenerados(data);
+  };
 
   const handleChecklistChange = async (doc: keyof ChecklistDocs, status: DocumentStatus) => {
     const newChecklist = { ...checklist, [doc]: status };
@@ -174,6 +199,7 @@ const VendedorDocumentacion = () => {
 
     try {
       if (solicitud) {
+        console.log("Saving checklist for solicitud:", solicitud.id);
         const { error } = await (supabase as any)
           .from("checklist_documentos")
           .upsert({
@@ -182,7 +208,10 @@ const VendedorDocumentacion = () => {
             updated_at: new Date().toISOString()
           }, { onConflict: 'solicitud_id' });
         
-        if (error) throw error;
+        if (error) {
+          console.error("Supabase upsert error:", error);
+          throw error;
+        }
       }
     } catch (error) {
       console.error("Error saving checklist:", error);
@@ -227,11 +256,58 @@ const VendedorDocumentacion = () => {
   };
 
   const generateContract = async (tipo: 'contrato' | 'señal') => {
-    toast.info("Generando documento...");
-    // Simulated call to Edge Function
-    setTimeout(() => {
+    if (!solicitud || !usuario) return;
+    
+    if (tipo === 'contrato' && (!compradorData.nombre || !compradorData.dni)) {
+      toast.warning("Por favor rellena los datos del comprador");
+      return;
+    }
+
+    setIsGenerating(true);
+    toast.info(`Generando ${tipo}... esto puede tardar unos segundos`);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('generar-contrato', {
+        body: {
+          solicitud_id: solicitud.id,
+          tipo,
+          vendedor: {
+            nombre: usuario.nombre,
+            dni: usuario.dni || "", // Need to ensure user has DNI in profile
+            direccion: usuario.direccion || "",
+            telefono: usuario.telefono || ""
+          },
+          comprador: compradorData,
+          vehiculo: {
+            marca: solicitud.marca,
+            modelo: solicitud.modelo,
+            anio: solicitud.anio,
+            matricula: vehiculoExtraData.matricula,
+            bastidor: vehiculoExtraData.bastidor,
+            km: solicitud.km
+          },
+          operacion: {
+            precio: operacionData.precioFinal,
+            forma_pago: operacionData.formaPago,
+            fecha: format(operacionData.fecha, "dd/MM/yyyy"),
+            importe_senal: operacionData.importeSenal,
+            observaciones: operacionData.observaciones,
+            fecha_limite: format(operacionData.fechaLimite, "dd/MM/yyyy"),
+            condiciones_devolucion: operacionData.condicionesDevolucion
+          }
+        }
+      });
+
+      if (error) throw error;
+
       toast.success(`${tipo === 'contrato' ? 'Contrato' : 'Recibo'} generado correctamente`);
-    }, 2000);
+      loadHistory(solicitud.id);
+    } catch (error) {
+      console.error("Error generating contract:", error);
+      toast.error("No se pudo generar el documento. Comprueba que el servidor esté activo.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   if (loading) {
@@ -401,7 +477,28 @@ const VendedorDocumentacion = () => {
                 <div className="space-y-2 text-sm">
                   <p><strong>Nombre:</strong> {usuario?.nombre}</p>
                   <p><strong>Teléfono:</strong> {usuario?.telefono}</p>
-                  <p className="text-xs text-muted-foreground italic">Datos tomados de tu perfil</p>
+                  <p className="text-xs text-muted-foreground italic">Asegúrate de tener tu DNI en el perfil</p>
+                </div>
+                <div className="space-y-3 pt-4 border-t">
+                  <h3 className="font-bold text-sm">Datos del Vehículo</h3>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Matrícula</Label>
+                    <Input 
+                      placeholder="1234BBB" 
+                      className="h-8" 
+                      value={vehiculoExtraData.matricula} 
+                      onChange={e => setVehiculoExtraData(prev => ({ ...prev, matricula: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Número de Bastidor (VIN)</Label>
+                    <Input 
+                      placeholder="WF0A..." 
+                      className="h-8" 
+                      value={vehiculoExtraData.bastidor} 
+                      onChange={e => setVehiculoExtraData(prev => ({ ...prev, bastidor: e.target.value }))}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="space-y-4">
@@ -524,13 +621,51 @@ const VendedorDocumentacion = () => {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
-            <Button className="w-full bg-forest" onClick={() => generateContract('contrato')}>
-              Generar contrato
+            <Button className="w-full bg-forest" onClick={() => generateContract('contrato')} disabled={isGenerating}>
+              {isGenerating ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : "Generar contrato"}
             </Button>
             <p className="text-[10px] text-muted-foreground text-center italic">
               Este contrato ha sido generado como documento orientativo. Para operaciones de alto valor te recomendamos revisarlo con un profesional.
             </p>
           </CardFooter>
+        </Card>
+
+        {/* History of Documents */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+             <CardTitle className="text-lg">Documentos generados</CardTitle>
+             <CardDescription>Descarga aquí tus contratos y recibos previos.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {docsGenerados.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground italic">
+                No has generado ningún documento todavía.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {docsGenerados.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-ocre/10 rounded-full">
+                        <FileText className="h-4 w-4 text-ocre" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold capitalize">{doc.tipo.replace('_', ' ')}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {format(new Date(doc.created_at), "PPP p", { locale: es })}
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" asChild className="gap-2">
+                      <a href={doc.url_pdf} target="_blank" rel="noreferrer">
+                        <Download className="h-4 w-4" /> Descargar
+                      </a>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
         </Card>
 
         {/* MODULE 3: Recibo de señal */}
@@ -595,8 +730,8 @@ const VendedorDocumentacion = () => {
              </div>
           </CardContent>
           <CardFooter>
-            <Button variant="outline" className="w-full border-ocre text-ocre hover:bg-ocre/5" onClick={() => generateContract('señal')}>
-              Generar recibo de señal
+            <Button variant="outline" className="w-full border-ocre text-ocre hover:bg-ocre/5" onClick={() => generateContract('señal')} disabled={isGenerating}>
+              {isGenerating ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : "Generar recibo de señal"}
             </Button>
           </CardFooter>
         </Card>
