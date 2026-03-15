@@ -257,53 +257,90 @@ const VendedorDocumentacion = () => {
 
   const createFallbackPDF = (tipo: 'contrato' | 'señal', data: any) => {
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text(`DOCUMENTO DE ${tipo.toUpperCase()}`, 20, 20);
+    doc.setFontSize(14);
     
-    doc.setFontSize(12);
-    let y = 40;
-    const addLine = (text: string) => {
-      const split = doc.splitTextToSize(text, 170);
-      doc.text(split, 20, y);
-      y += (split.length * 7);
+    let y = 20;
+
+    const checkPageBreak = (neededLines: number) => {
+      if (y + (neededLines * 7) > 280) {
+        doc.addPage();
+        y = 20;
+      }
     };
 
-    if (tipo === 'contrato') {
-      addLine(`En la fecha de ${format(operacionData.fecha, "dd/MM/yyyy")}, las partes acuerdan el contrato de compraventa del vehículo.`);
-      y += 10;
-    } else {
-      addLine(`En la fecha de ${format(operacionData.fecha, "dd/MM/yyyy")}, se abona importe en concepto de SEÑAL.`);
-      y += 10;
-    }
+    const addLine = (text: string, bold = false, size = 11, marginTop = 0) => {
+      y += marginTop;
+      checkPageBreak(1);
+      doc.setFont("helvetica", bold ? "bold" : "normal");
+      doc.setFontSize(size);
+      const split = doc.splitTextToSize(text, 170);
+      checkPageBreak(split.length);
+      doc.text(split, 20, y);
+      y += (split.length * (size * 0.45));
+    };
 
-    addLine(`VENDEDOR: ${usuario?.nombre} - DNI: ${vendedorExtraData.dni}`);
-    addLine(`DIRECCIÓN VENDEDOR: ${vendedorExtraData.direccion}`);
-    y += 10;
-    
-    addLine(`COMPRADOR: ${compradorData.nombre} - DNI: ${compradorData.dni}`);
-    addLine(`DIRECCIÓN COMPRADOR: ${compradorData.direccion}`);
-    y += 10;
-
-    addLine(`VEHÍCULO: ${solicitud?.marca} ${solicitud?.modelo} (${solicitud?.anio})`);
-    addLine(`MATRÍCULA: ${vehiculoExtraData.matricula}  -  BASTIDOR: ${vehiculoExtraData.bastidor}  -  KILÓMETROS: ${solicitud?.km}`);
-    y += 10;
+    const fechaFormateada = format(operacionData.fecha, "dd 'de' MMMM 'de' yyyy", { locale: es });
 
     if (tipo === 'contrato') {
-      addLine(`PRECIO FINAL DE VENTA: ${operacionData.precioFinal}€`);
-      addLine(`FORMA DE PAGO: ${operacionData.formaPago}`);
-      addLine(`SEÑAL PREVIA ABONADA: ${operacionData.importeSenal}€`);
-      y += 5;
-      addLine(`OBSERVACIONES: ${operacionData.observaciones || "Ninguna"}`);
+      addLine("CONTRATO DE COMPRAVENTA DE VEHÍCULO USADO ENTRE PARTICULARES", true, 14, 0);
+      addLine(`En ${solicitud?.provincia || "lugar de firma"}, a ${fechaFormateada}`, false, 11, 10);
+      
+      addLine("REUNIDOS", true, 12, 10);
+      addLine(`De una parte, como VENDEDOR: D./Dña. ${usuario?.nombre || "____________________"}, mayor de edad, con DNI/NIF ${vendedorExtraData.dni || "__________"} y domicilio en ${vendedorExtraData.direccion || "____________________"}.`, false, 11, 5);
+      addLine(`De otra parte, como COMPRADOR: D./Dña. ${compradorData.nombre || "____________________"}, mayor de edad, con DNI/NIF ${compradorData.dni || "__________"} y domicilio en ${compradorData.direccion || "____________________"}.`, false, 11, 5);
+      
+      addLine("Ambas partes intervienen en su propio nombre y derecho, y se reconocen recíprocamente la capacidad legal y necesaria para la celebración del presente CONTRATO DE COMPRAVENTA, de acuerdo con las siguientes:", false, 11, 5);
+
+      addLine("CLÁUSULAS", true, 12, 10);
+      
+      addLine(`PRIMERA.- El VENDEDOR es propietario del vehículo marca ${solicitud?.marca || "__________"}, modelo ${solicitud?.modelo || "__________"}, matrícula ${vehiculoExtraData.matricula || "__________"}, número de bastidor ${vehiculoExtraData.bastidor || "__________"} y con ${solicitud?.km || "0"} kilómetros indicados en el odómetro.`, false, 11, 5);
+      
+      addLine(`SEGUNDA.- El VENDEDOR vende al COMPRADOR el vehículo reseñado en la cláusula anterior por la cantidad de ${operacionData.precioFinal || "0"} EUROS (${operacionData.precioFinal || "0"} €).`, false, 11, 5);
+      
+      addLine(`TERCERA.- El pago de la cantidad de ${operacionData.precioFinal || "0"} EUROS se realiza mediante ${operacionData.formaPago || "__________"} en el momento de la firma de este contrato. En caso de existir una señal previa entregada de ${operacionData.importeSenal || "0"} EUROS, ésta se descuenta del precio final total, sirviendo este documento de eficaz carta de pago.`, false, 11, 5);
+      
+      addLine(`CUARTA.- El COMPRADOR declara conocer el estado actual físico y mecánico del vehículo. El vehículo se vende en el estado actual en el que se encuentra, eximiendo al VENDEDOR de garantía alguna sobre averías futuras o desgastes propios del uso, salvo aquellos vicios o defectos ocultos sujetos al artículo 1484 del Código Civil.`, false, 11, 5);
+      
+      addLine(`QUINTA.- El VENDEDOR declara responsablemente que sobre el vehículo no pesa embargo, reserva de dominio, precinto, cargas impositivas, deudas, ni cualquier otra limitación de disposición. En caso contrario, el VENDEDOR se hace cargo de su cancelación y costas.`, false, 11, 5);
+      
+      addLine(`SEXTA.- Desde la fecha y hora de la firma de este contrato, el COMPRADOR asume la posesión del vehículo y se hace cargo de cuantas responsabilidades civiles, administrativas o de tráfico puedan contraerse por la propiedad y uso del mismo, eximiendo al VENDEDOR de cualquier contingencia derivada desde este mismo instante. El COMPRADOR se compromete a realizar la transferencia comercial en las próximas semanas.`, false, 11, 5);
+      
+      if (operacionData.observaciones) {
+        addLine(`SÉPTIMA (OBSERVACIONES).- ${operacionData.observaciones}`, false, 11, 5);
+      }
+
+      addLine("Y para que así conste, y en prueba de conformidad con todo lo anterior, ambas partes firman el presente contrato por duplicado, a un solo efecto, en el lugar y fecha arriba indicados.", false, 11, 10);
+
     } else {
-      addLine(`IMPORTE ABONADO COMO SEÑAL: ${operacionData.importeSenal}€`);
-      addLine(`PRECIO TOTAL ACORDADO: ${operacionData.precioFinal}€`);
-      addLine(`FORMA DE PAGO DE LA SEÑAL: ${operacionData.formaPago}`);
-      addLine(`FECHA LÍMITE PARA FIRMA: ${format(operacionData.fechaLimite, "dd/MM/yyyy")}`);
-      addLine(`CONDICIONES DE DEVOLUCIÓN: ${operacionData.condicionesDevolucion}`);
+      addLine("RECIBO DE SEÑAL / RESERVA DE VEHÍCULO", true, 14, 0);
+      addLine(`En ${solicitud?.provincia || "lugar de firma"}, a ${fechaFormateada}`, false, 11, 10);
+      
+      addLine("REUNIDOS", true, 12, 10);
+      addLine(`VENDEDOR: D./Dña. ${usuario?.nombre || "____________________"}, constando DNI/NIF ${vendedorExtraData.dni || "__________"}.`, false, 11, 5);
+      addLine(`COMPRADOR: D./Dña. ${compradorData.nombre || "____________________"}, constando DNI/NIF ${compradorData.dni || "__________"}.`, false, 11, 5);
+      
+      addLine("ACUERDAN", true, 12, 10);
+      
+      addLine(`PRIMERO.- El COMPRADOR hace entrega al VENDEDOR en este acto de la cantidad de ${operacionData.importeSenal || "0"} EUROS (${operacionData.importeSenal || "0"} €) en concepto de SEÑAL o RESERVA firme para la futura compra del vehículo marca ${solicitud?.marca || "__________"}, modelo ${solicitud?.modelo || "__________"}, y matrícula ${vehiculoExtraData.matricula || "__________"}.`, false, 11, 5);
+      
+      addLine(`SEGUNDO.- El precio total acordado para la futura compraventa se fija en ${operacionData.precioFinal || "0"} EUROS.`, false, 11, 5);
+      
+      addLine(`TERCERO.- Ambas partes fijan como fecha límite improrrogable para formalizar el contrato de compraventa y abonar la cantidad restante el día ${format(operacionData.fechaLimite, "dd 'de' MMMM 'de' yyyy", { locale: es })}.`, false, 11, 5);
+      
+      let condicionesText = "";
+      if (operacionData.condicionesDevolucion === "precio") condicionesText = "La señal se descontará integramente del precio final estipulado en la compra.";
+      else if (operacionData.condicionesDevolucion === "pierde") condicionesText = "Si el COMPRADOR desiste de la compraventa antes de la fecha límite, perderá la totalidad de la cantidad entregada como señal a favor del VENDEDOR. Si es el VENDEDOR quien desiste, devolverá la señal duplicada al COMPRADOR.";
+      else if (operacionData.condicionesDevolucion === "vendedor") condicionesText = "Si el VENDEDOR se niega a vender el vehículo en las condiciones pactadas, deberá devolver la señal duplicada al COMPRADOR.";
+      else condicionesText = operacionData.condicionesDevolucion || "La señal entregada es firme y condiciona la reserva excluyendo a otros posibles compradores.";
+      
+      addLine(`CUARTO (CONDICIONES).- ${condicionesText}`, false, 11, 5);
+      
+      addLine("Y en prueba de la más estricta conformidad, ambas partes firman el presente recibo por duplicado.", false, 11, 10);
     }
 
-    y += 30;
-    addLine(`Firma Vendedor:                               Firma Comprador:`);
+    checkPageBreak(5);
+    y += 20;
+    addLine("Firma de EL VENDEDOR                                                 Firma de EL COMPRADOR", true, 12, 0);
     
     const blob = doc.output('blob');
     const url = URL.createObjectURL(blob);
