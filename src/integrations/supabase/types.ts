@@ -105,6 +105,41 @@ export type Database = {
           },
         ]
       }
+      documentos_venta: {
+        Row: {
+          created_at: string
+          datos_comprador: Json | null
+          id: string
+          solicitud_id: string
+          tipo: string
+          url_pdf: string
+        }
+        Insert: {
+          created_at?: string
+          datos_comprador?: Json | null
+          id?: string
+          solicitud_id: string
+          tipo: string
+          url_pdf: string
+        }
+        Update: {
+          created_at?: string
+          datos_comprador?: Json | null
+          id?: string
+          solicitud_id?: string
+          tipo?: string
+          url_pdf?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documentos_venta_solicitud_id_fkey"
+            columns: ["solicitud_id"]
+            isOneToOne: false
+            referencedRelation: "solicitudes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fichas: {
         Row: {
           activa: boolean
