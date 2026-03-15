@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
           Authorization: `Bearer ${lovableApiKey}`,
         },
         body: JSON.stringify({
-          model: "google/gemini-2.0-flash", // Use latest available
+          model: "google/gemini-3-flash-preview",
           messages: [
             { role: "system", content: "Actúa como un notario español experto en contratos privados. Escribe solo el contenido del contrato." },
             { role: "user", content: prompt }
