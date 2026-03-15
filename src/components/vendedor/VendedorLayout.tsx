@@ -2,12 +2,13 @@ import { ReactNode, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { FileText, Globe, User, LogOut, TrendingUp, Megaphone } from "lucide-react";
+import { FileText, Globe, User, LogOut, TrendingUp, Megaphone, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const baseNavItems = [
   { label: "Mi solicitud", path: "/vendedor", icon: FileText },
+  { label: "Documentación", path: "/vendedor/documentacion", icon: ShieldCheck },
   { label: "Mi ficha", path: "/vendedor/ficha", icon: Globe },
   { label: "Analizar precio", path: "/vendedor/precio", icon: TrendingUp },
   { label: "Mi cuenta", path: "/vendedor/cuenta", icon: User },
