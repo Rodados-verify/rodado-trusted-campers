@@ -154,9 +154,18 @@ serve(async (req) => {
 
     const originalImage = await decode(imgBuffer) as Image;
     const watermarkImage = await decode(wmBuffer) as Image;
-    applyWatermark(originalImage, watermarkImage);
+    console.log(`Original image dimensions: ${originalImage.width}x${originalImage.height}, size: ${imgBuffer.length} bytes`);
 
-    const resultBuffer = await originalImage.encodeJPEG(90);
+    // Skip watermarking for very small images (< 600px wide) - they'd look pixelated
+    const MIN_WIDTH_FOR_WATERMARK = 600;
+    let resultBuffer: Uint8Array;
+    if (originalImage.width >= MIN_WIDTH_FOR_WATERMARK) {
+      applyWatermark(originalImage, watermarkImage);
+      resultBuffer = await originalImage.encodeJPEG(95);
+    } else {
+      console.log(`Skipping watermark: image too small (${originalImage.width}px wide)`);
+      resultBuffer = await originalImage.encodeJPEG(95);
+    }
 
     const urlObj = new URL(foto_url);
     const storagePath = urlObj.pathname.replace(`/storage/v1/object/public/${BUCKET}/`, "");
