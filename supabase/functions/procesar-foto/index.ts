@@ -173,7 +173,7 @@ serve(async (req) => {
     if (uploadError) throw new Error(`Failed to upload: ${uploadError.message}`);
 
     const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(processedPath);
-    const processedUrl = urlData.publicUrl;
+    const processedUrl = `${urlData.publicUrl}?v=${Date.now()}`;
 
     if (solicitud_id) {
       await supabase.from("fotos_solicitud").insert({

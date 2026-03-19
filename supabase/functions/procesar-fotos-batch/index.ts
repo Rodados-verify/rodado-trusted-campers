@@ -185,8 +185,9 @@ serve(async (req) => {
         if (uploadError) { failed++; continue; }
 
         const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(processedPath);
+        const cacheBustedUrl = `${urlData.publicUrl}?v=${Date.now()}`;
         await supabase.from("fotos_solicitud").insert({
-          solicitud_id: photo.solicitud_id, url: urlData.publicUrl, tipo: "procesada",
+          solicitud_id: photo.solicitud_id, url: cacheBustedUrl, tipo: "procesada",
         });
 
         processed++;
