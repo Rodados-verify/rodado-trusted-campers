@@ -37,9 +37,9 @@ export const Navbar = () => {
           <a href="#sello-rodado" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             El sello Rodado
           </a>
-          <a href="#talleres" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          <Link to="/talleres" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Para talleres
-          </a>
+          </Link>
           <Link to="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Acceder
           </Link>
@@ -63,9 +63,9 @@ export const Navbar = () => {
           <a href="#sello-rodado" className="block text-sm font-medium text-muted-foreground" onClick={() => setMobileOpen(false)}>
             El sello Rodado
           </a>
-          <a href="#talleres" className="block text-sm font-medium text-muted-foreground" onClick={() => setMobileOpen(false)}>
+          <Link to="/talleres" className="block text-sm font-medium text-muted-foreground" onClick={() => setMobileOpen(false)}>
             Para talleres
-          </a>
+          </Link>
           <Link to="/login" className="block text-sm font-medium text-muted-foreground" onClick={() => setMobileOpen(false)}>
             Acceder
           </Link>
