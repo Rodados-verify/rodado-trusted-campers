@@ -171,9 +171,11 @@ serve(async (req) => {
 
         const originalImage = await decode(imgBuffer) as Image;
         const watermarkImage = await decode(wmBuffer) as Image;
+        console.log(`Image ${processed + 1}: ${originalImage.width}x${originalImage.height}, size: ${imgBuffer.length} bytes`);
         applyWatermark(originalImage, watermarkImage);
 
-        const resultBuffer = await originalImage.encodeJPEG(90);
+        // Use quality 95 to minimize re-compression artifacts
+        const resultBuffer = await originalImage.encodeJPEG(95);
 
         const urlObj = new URL(photo.url);
         const storagePath = urlObj.pathname.replace(`/storage/v1/object/public/${BUCKET}/`, "");
