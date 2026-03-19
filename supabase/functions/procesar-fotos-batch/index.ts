@@ -172,10 +172,16 @@ serve(async (req) => {
         const originalImage = await decode(imgBuffer) as Image;
         const watermarkImage = await decode(wmBuffer) as Image;
         console.log(`Image ${processed + 1}: ${originalImage.width}x${originalImage.height}, size: ${imgBuffer.length} bytes`);
-        applyWatermark(originalImage, watermarkImage);
 
-        // Use quality 95 to minimize re-compression artifacts
-        const resultBuffer = await originalImage.encodeJPEG(95);
+        const MIN_WIDTH_FOR_WATERMARK = 600;
+        let resultBuffer: Uint8Array;
+        if (originalImage.width >= MIN_WIDTH_FOR_WATERMARK) {
+          applyWatermark(originalImage, watermarkImage);
+          resultBuffer = await originalImage.encodeJPEG(95);
+        } else {
+          console.log(`Skipping watermark: image too small (${originalImage.width}px wide)`);
+          resultBuffer = await originalImage.encodeJPEG(95);
+        }
 
         const urlObj = new URL(photo.url);
         const storagePath = urlObj.pathname.replace(`/storage/v1/object/public/${BUCKET}/`, "");
