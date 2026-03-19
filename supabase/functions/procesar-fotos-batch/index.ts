@@ -11,48 +11,53 @@ const corsHeaders = {
 const WATERMARK_PATH = "_assets/watermark-bar.png";
 const BUCKET = "solicitud-fotos";
 
-const BAND_R = 28, BAND_G = 58, BAND_B = 46; // #1C3A2E
+const BAND_R = 28, BAND_G = 58, BAND_B = 46;
+const ACCENT_R = 196, ACCENT_G = 123, ACCENT_B = 42;
 
 function applyWatermark(originalImage: Image, watermarkImage: Image): void {
   const imgWidth = originalImage.width;
   const imgHeight = originalImage.height;
 
-  const bandHeight = Math.round(imgHeight * 0.08);
-  const bandY = imgHeight - bandHeight;
+  const flagWidth = Math.round(imgWidth * 0.30);
+  const wmPadding = Math.round(flagWidth * 0.08);
+  const wmTargetWidth = flagWidth - wmPadding * 2;
+  const wmAspect = watermarkImage.width / watermarkImage.height;
+  const wmTargetHeight = Math.round(wmTargetWidth / wmAspect);
+  const flagHeight = wmTargetHeight + wmPadding * 2;
 
-  // 1) Semi-transparent forest-green band
-  for (let x = 1; x <= imgWidth; x++) {
-    for (let y = bandY + 1; y <= imgHeight; y++) {
+  // 1) Forest-green flag background
+  for (let x = 1; x <= flagWidth; x++) {
+    for (let y = 1; y <= flagHeight; y++) {
       const existingPixel = originalImage.getPixelAt(x, y);
       const eR = (existingPixel >> 24) & 0xFF;
       const eG = (existingPixel >> 16) & 0xFF;
       const eB = (existingPixel >> 8) & 0xFF;
-
-      const blendR = Math.round(BAND_R * 0.7 + eR * 0.3);
-      const blendG = Math.round(BAND_G * 0.7 + eG * 0.3);
-      const blendB = Math.round(BAND_B * 0.7 + eB * 0.3);
-
+      const blendR = Math.round(BAND_R * 0.80 + eR * 0.20);
+      const blendG = Math.round(BAND_G * 0.80 + eG * 0.20);
+      const blendB = Math.round(BAND_B * 0.80 + eB * 0.20);
       originalImage.setPixelAt(x, y, Image.rgbaToColor(blendR, blendG, blendB, 255));
     }
   }
 
-  // 2) Proportional watermark resize
-  const wmAspect = watermarkImage.width / watermarkImage.height;
-  const targetWmHeight = Math.round(bandHeight * 0.7);
-  const targetWmWidth = Math.round(targetWmHeight * wmAspect);
-
-  const maxWmWidth = Math.round(imgWidth * 0.4);
-  let finalWidth = Math.min(targetWmWidth, maxWmWidth);
-  let finalHeight = Math.round(finalWidth / wmAspect);
-
-  if (finalHeight > bandHeight * 0.85) {
-    finalHeight = Math.round(bandHeight * 0.85);
-    finalWidth = Math.round(finalHeight * wmAspect);
+  // 2) Ocre accent bottom edge
+  const accentThickness = Math.max(2, Math.round(flagHeight * 0.04));
+  for (let x = 1; x <= flagWidth; x++) {
+    for (let t = 0; t < accentThickness; t++) {
+      const y = flagHeight - t;
+      if (y >= 1) originalImage.setPixelAt(x, y, Image.rgbaToColor(ACCENT_R, ACCENT_G, ACCENT_B, 255));
+    }
   }
 
-  const resizedWm = watermarkImage.resize(finalWidth, finalHeight);
+  // 3) Ocre accent right edge
+  for (let y = 1; y <= flagHeight; y++) {
+    for (let t = 0; t < accentThickness; t++) {
+      const x = flagWidth - t;
+      if (x >= 1) originalImage.setPixelAt(x, y, Image.rgbaToColor(ACCENT_R, ACCENT_G, ACCENT_B, 255));
+    }
+  }
 
-  // 3) Slight transparency
+  // 4) Resize watermark proportionally
+  const resizedWm = watermarkImage.resize(wmTargetWidth, wmTargetHeight);
   for (let x = 1; x <= resizedWm.width; x++) {
     for (let y = 1; y <= resizedWm.height; y++) {
       const pixel = resizedWm.getPixelAt(x, y);
@@ -61,15 +66,38 @@ function applyWatermark(originalImage: Image, watermarkImage: Image): void {
       const r = (pixel >> 24) & 0xFF;
       const g = (pixel >> 16) & 0xFF;
       const b = (pixel >> 8) & 0xFF;
-      resizedWm.setPixelAt(x, y, Image.rgbaToColor(r, g, b, Math.round(a * 0.9)));
+      resizedWm.setPixelAt(x, y, Image.rgbaToColor(r, g, b, Math.round(a * 0.95)));
     }
   }
+  originalImage.composite(resizedWm, wmPadding, wmPadding);
 
-  // 4) Center on band
-  const wmX = Math.round((imgWidth - finalWidth) / 2);
-  const wmY = bandY + Math.round((bandHeight - finalHeight) / 2);
-
-  originalImage.composite(resizedWm, wmX, wmY);
+  // 5) Subtle shadow
+  const shadowLength = Math.round(flagWidth * 0.02);
+  for (let s = 1; s <= shadowLength; s++) {
+    const opacity = Math.round(40 * (1 - s / shadowLength));
+    const sx = flagWidth + s;
+    if (sx <= imgWidth) {
+      for (let y = 1; y <= flagHeight; y++) {
+        const existing = originalImage.getPixelAt(sx, y);
+        const eR = (existing >> 24) & 0xFF;
+        const eG = (existing >> 16) & 0xFF;
+        const eB = (existing >> 8) & 0xFF;
+        const f = 1 - opacity / 255;
+        originalImage.setPixelAt(sx, y, Image.rgbaToColor(Math.round(eR * f), Math.round(eG * f), Math.round(eB * f), 255));
+      }
+    }
+    const sy = flagHeight + s;
+    if (sy <= imgHeight) {
+      for (let x = 1; x <= flagWidth; x++) {
+        const existing = originalImage.getPixelAt(x, sy);
+        const eR = (existing >> 24) & 0xFF;
+        const eG = (existing >> 16) & 0xFF;
+        const eB = (existing >> 8) & 0xFF;
+        const f = 1 - opacity / 255;
+        originalImage.setPixelAt(x, sy, Image.rgbaToColor(Math.round(eR * f), Math.round(eG * f), Math.round(eB * f), 255));
+      }
+    }
+  }
 }
 
 serve(async (req) => {
@@ -82,7 +110,6 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 1) Collect all photo URLs from inspeccion_detalle
     const { data: inspecciones, error: inspErr } = await supabase
       .from("inspeccion_detalle")
       .select("solicitud_id, foto_frontal_url, foto_lateral_izq_url, foto_lateral_der_url, foto_trasera_url, foto_34_frontal_url, foto_34_trasero_url, foto_interior_conduccion_url, foto_dinette_url, foto_cocina_url, foto_banio_url, foto_cama_url, foto_habitaculo_url, foto_motor_url, foto_bajos_url, foto_neumaticos_url, foto_cuadro_electrico_url, foto_panel_solar_url, fotos_adicionales_urls, fotos_desperfectos_urls");
@@ -117,32 +144,24 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Found ${allPhotos.length} photos from inspeccion_detalle`);
+    console.log(`Found ${allPhotos.length} photos`);
 
-    // 2) Clear existing fotos_solicitud and re-insert as originals
     for (const insp of inspecciones || []) {
       await supabase.from("fotos_solicitud").delete().eq("solicitud_id", insp.solicitud_id);
     }
 
     for (const photo of allPhotos) {
       await supabase.from("fotos_solicitud").insert({
-        solicitud_id: photo.solicitud_id,
-        url: photo.url,
-        tipo: "original",
+        solicitud_id: photo.solicitud_id, url: photo.url, tipo: "original",
       });
     }
-    console.log(`Inserted ${allPhotos.length} original records`);
 
-    // 3) Download watermark once
     const watermarkUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${WATERMARK_PATH}`;
     const wmRes = await fetch(watermarkUrl, { signal: AbortSignal.timeout(10000) });
     if (!wmRes.ok) throw new Error(`Watermark download failed: ${wmRes.status}`);
     const wmBuffer = new Uint8Array(await wmRes.arrayBuffer());
-    console.log("Watermark downloaded");
 
-    // 4) Process each photo
-    let processed = 0;
-    let failed = 0;
+    let processed = 0, failed = 0;
 
     for (const photo of allPhotos) {
       try {
@@ -152,7 +171,6 @@ serve(async (req) => {
 
         const originalImage = await decode(imgBuffer) as Image;
         const watermarkImage = await decode(wmBuffer) as Image;
-
         applyWatermark(originalImage, watermarkImage);
 
         const resultBuffer = await originalImage.encodeJPEG(90);
@@ -162,23 +180,19 @@ serve(async (req) => {
         const processedPath = `procesada/${storagePath.replace(/^(taller\/|[^/]+\/)/, "")}`;
 
         const { error: uploadError } = await supabase.storage
-          .from(BUCKET)
-          .upload(processedPath, resultBuffer, { contentType: "image/jpeg", upsert: true });
+          .from(BUCKET).upload(processedPath, resultBuffer, { contentType: "image/jpeg", upsert: true });
 
-        if (uploadError) { console.error("Upload error:", uploadError); failed++; continue; }
+        if (uploadError) { failed++; continue; }
 
         const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(processedPath);
-
         await supabase.from("fotos_solicitud").insert({
-          solicitud_id: photo.solicitud_id,
-          url: urlData.publicUrl,
-          tipo: "procesada",
+          solicitud_id: photo.solicitud_id, url: urlData.publicUrl, tipo: "procesada",
         });
 
         processed++;
         console.log(`Processed ${processed}/${allPhotos.length}`);
       } catch (e) {
-        console.error(`Failed:`, e);
+        console.error("Failed:", e);
         failed++;
       }
     }

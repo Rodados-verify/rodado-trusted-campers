@@ -11,72 +11,121 @@ const corsHeaders = {
 const WATERMARK_PATH = "_assets/watermark-bar.png";
 const BUCKET = "solicitud-fotos";
 
-// Forest green brand color
-const BAND_R = 28, BAND_G = 58, BAND_B = 46; // #1C3A2E
+// Brand colors #1C3A2E forest green
+const BAND_R = 28, BAND_G = 58, BAND_B = 46;
+// Accent ocre #C47B2A
+const ACCENT_R = 196, ACCENT_G = 123, ACCENT_B = 42;
 
 function applyWatermark(originalImage: Image, watermarkImage: Image): void {
   const imgWidth = originalImage.width;
   const imgHeight = originalImage.height;
 
-  // Band height: 8% of image height (more subtle)
-  const bandHeight = Math.round(imgHeight * 0.08);
-  const bandY = imgHeight - bandHeight;
+  // === FLAG in top-left corner ===
+  // Flag dimensions: width = 30% of image, height proportional to watermark
+  const flagWidth = Math.round(imgWidth * 0.30);
+  
+  // Resize watermark proportionally to fit flag width with padding
+  const wmPadding = Math.round(flagWidth * 0.08);
+  const wmTargetWidth = flagWidth - wmPadding * 2;
+  const wmAspect = watermarkImage.width / watermarkImage.height;
+  const wmTargetHeight = Math.round(wmTargetWidth / wmAspect);
+  
+  // Flag height = watermark height + padding top/bottom
+  const flagHeight = wmTargetHeight + wmPadding * 2;
 
-  // 1) Draw semi-transparent forest-green band at the bottom
-  for (let x = 1; x <= imgWidth; x++) {
-    for (let y = bandY + 1; y <= imgHeight; y++) {
+  // 1) Draw forest-green flag background with slight transparency
+  for (let x = 1; x <= flagWidth; x++) {
+    for (let y = 1; y <= flagHeight; y++) {
       const existingPixel = originalImage.getPixelAt(x, y);
       const eR = (existingPixel >> 24) & 0xFF;
       const eG = (existingPixel >> 16) & 0xFF;
       const eB = (existingPixel >> 8) & 0xFF;
 
-      // Blend: 70% band color, 30% original
-      const blendR = Math.round(BAND_R * 0.7 + eR * 0.3);
-      const blendG = Math.round(BAND_G * 0.7 + eG * 0.3);
-      const blendB = Math.round(BAND_B * 0.7 + eB * 0.3);
+      // 80% band, 20% original for readability
+      const blendR = Math.round(BAND_R * 0.80 + eR * 0.20);
+      const blendG = Math.round(BAND_G * 0.80 + eG * 0.20);
+      const blendB = Math.round(BAND_B * 0.80 + eB * 0.20);
 
       originalImage.setPixelAt(x, y, Image.rgbaToColor(blendR, blendG, blendB, 255));
     }
   }
 
-  // 2) Resize watermark PROPORTIONALLY to fit inside the band
-  const wmAspect = watermarkImage.width / watermarkImage.height;
-  // Watermark should be 85% of band height, and width follows aspect ratio
-  const targetWmHeight = Math.round(bandHeight * 0.7);
-  const targetWmWidth = Math.round(targetWmHeight * wmAspect);
-
-  // Cap width at 40% of image width to avoid being too wide
-  const maxWmWidth = Math.round(imgWidth * 0.4);
-  let finalWidth = Math.min(targetWmWidth, maxWmWidth);
-  let finalHeight = Math.round(finalWidth / wmAspect);
-
-  // Ensure it fits within band
-  if (finalHeight > bandHeight * 0.85) {
-    finalHeight = Math.round(bandHeight * 0.85);
-    finalWidth = Math.round(finalHeight * wmAspect);
+  // 2) Draw ocre accent line at the bottom of the flag (3px thick)
+  const accentThickness = Math.max(2, Math.round(flagHeight * 0.04));
+  for (let x = 1; x <= flagWidth; x++) {
+    for (let t = 0; t < accentThickness; t++) {
+      const y = flagHeight - t;
+      if (y >= 1) {
+        originalImage.setPixelAt(x, y, Image.rgbaToColor(ACCENT_R, ACCENT_G, ACCENT_B, 255));
+      }
+    }
   }
 
-  const resizedWm = watermarkImage.resize(finalWidth, finalHeight);
+  // 3) Draw ocre accent line on the right edge of the flag (3px thick)
+  for (let y = 1; y <= flagHeight; y++) {
+    for (let t = 0; t < accentThickness; t++) {
+      const x = flagWidth - t;
+      if (x >= 1) {
+        originalImage.setPixelAt(x, y, Image.rgbaToColor(ACCENT_R, ACCENT_G, ACCENT_B, 255));
+      }
+    }
+  }
 
-  // 3) Apply slight transparency to watermark (90% opacity) and tint white for contrast
+  // 4) Resize watermark proportionally
+  const resizedWm = watermarkImage.resize(wmTargetWidth, wmTargetHeight);
+
+  // 5) Composite watermark centered in the flag area
+  const wmX = wmPadding;
+  const wmY = wmPadding;
+
+  // Make watermark slightly transparent for elegance
   for (let x = 1; x <= resizedWm.width; x++) {
     for (let y = 1; y <= resizedWm.height; y++) {
       const pixel = resizedWm.getPixelAt(x, y);
       const a = pixel & 0xFF;
-      if (a < 10) continue; // skip fully transparent pixels
+      if (a < 10) continue;
       const r = (pixel >> 24) & 0xFF;
       const g = (pixel >> 16) & 0xFF;
       const b = (pixel >> 8) & 0xFF;
-      // Keep original colors but with 90% opacity
-      resizedWm.setPixelAt(x, y, Image.rgbaToColor(r, g, b, Math.round(a * 0.9)));
+      resizedWm.setPixelAt(x, y, Image.rgbaToColor(r, g, b, Math.round(a * 0.95)));
     }
   }
 
-  // 4) Center watermark on the band
-  const wmX = Math.round((imgWidth - finalWidth) / 2);
-  const wmY = bandY + Math.round((bandHeight - finalHeight) / 2);
-
   originalImage.composite(resizedWm, wmX, wmY);
+
+  // 6) Add a subtle shadow on the right and bottom edges of the flag
+  const shadowLength = Math.round(flagWidth * 0.02);
+  for (let s = 1; s <= shadowLength; s++) {
+    const opacity = Math.round(40 * (1 - s / shadowLength));
+    // Right shadow
+    const sx = flagWidth + s;
+    if (sx <= imgWidth) {
+      for (let y = 1; y <= flagHeight; y++) {
+        const existing = originalImage.getPixelAt(sx, y);
+        const eR = (existing >> 24) & 0xFF;
+        const eG = (existing >> 16) & 0xFF;
+        const eB = (existing >> 8) & 0xFF;
+        const factor = 1 - opacity / 255;
+        originalImage.setPixelAt(sx, y, Image.rgbaToColor(
+          Math.round(eR * factor), Math.round(eG * factor), Math.round(eB * factor), 255
+        ));
+      }
+    }
+    // Bottom shadow
+    const sy = flagHeight + s;
+    if (sy <= imgHeight) {
+      for (let x = 1; x <= flagWidth; x++) {
+        const existing = originalImage.getPixelAt(x, sy);
+        const eR = (existing >> 24) & 0xFF;
+        const eG = (existing >> 16) & 0xFF;
+        const eB = (existing >> 8) & 0xFF;
+        const factor = 1 - opacity / 255;
+        originalImage.setPixelAt(x, sy, Image.rgbaToColor(
+          Math.round(eR * factor), Math.round(eG * factor), Math.round(eB * factor), 255
+        ));
+      }
+    }
+  }
 }
 
 serve(async (req) => {
@@ -92,28 +141,23 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 1) Download original image
     console.log("Downloading original image:", foto_url);
     const imgRes = await fetch(foto_url, { signal: AbortSignal.timeout(15000) });
     if (!imgRes.ok) throw new Error(`Failed to download image: ${imgRes.status}`);
     const imgBuffer = new Uint8Array(await imgRes.arrayBuffer());
 
-    // 2) Download watermark
     const watermarkUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${WATERMARK_PATH}`;
     console.log("Downloading watermark:", watermarkUrl);
     const wmRes = await fetch(watermarkUrl, { signal: AbortSignal.timeout(10000) });
     if (!wmRes.ok) throw new Error(`Failed to download watermark: ${wmRes.status}`);
     const wmBuffer = new Uint8Array(await wmRes.arrayBuffer());
 
-    // 3) Decode & apply watermark
     const originalImage = await decode(imgBuffer) as Image;
     const watermarkImage = await decode(wmBuffer) as Image;
     applyWatermark(originalImage, watermarkImage);
 
-    // 4) Encode to JPEG
     const resultBuffer = await originalImage.encodeJPEG(90);
 
-    // 5) Upload processed image
     const urlObj = new URL(foto_url);
     const storagePath = urlObj.pathname.replace(`/storage/v1/object/public/${BUCKET}/`, "");
     const processedPath = `procesada/${storagePath.replace(/^(taller\/|[^/]+\/)/, "")}`;
@@ -126,15 +170,11 @@ serve(async (req) => {
         upsert: true,
       });
 
-    if (uploadError) {
-      console.error("Upload error:", uploadError);
-      throw new Error(`Failed to upload processed image: ${uploadError.message}`);
-    }
+    if (uploadError) throw new Error(`Failed to upload: ${uploadError.message}`);
 
     const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(processedPath);
     const processedUrl = urlData.publicUrl;
 
-    // 6) Insert processed foto record
     if (solicitud_id) {
       await supabase.from("fotos_solicitud").insert({
         solicitud_id,
