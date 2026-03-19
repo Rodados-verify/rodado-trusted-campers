@@ -11,6 +11,74 @@ const corsHeaders = {
 const WATERMARK_PATH = "_assets/watermark-bar.png";
 const BUCKET = "solicitud-fotos";
 
+// Forest green brand color
+const BAND_R = 28, BAND_G = 58, BAND_B = 46; // #1C3A2E
+
+function applyWatermark(originalImage: Image, watermarkImage: Image): void {
+  const imgWidth = originalImage.width;
+  const imgHeight = originalImage.height;
+
+  // Band height: 8% of image height (more subtle)
+  const bandHeight = Math.round(imgHeight * 0.08);
+  const bandY = imgHeight - bandHeight;
+
+  // 1) Draw semi-transparent forest-green band at the bottom
+  for (let x = 1; x <= imgWidth; x++) {
+    for (let y = bandY + 1; y <= imgHeight; y++) {
+      const existingPixel = originalImage.getPixelAt(x, y);
+      const eR = (existingPixel >> 24) & 0xFF;
+      const eG = (existingPixel >> 16) & 0xFF;
+      const eB = (existingPixel >> 8) & 0xFF;
+
+      // Blend: 70% band color, 30% original
+      const blendR = Math.round(BAND_R * 0.7 + eR * 0.3);
+      const blendG = Math.round(BAND_G * 0.7 + eG * 0.3);
+      const blendB = Math.round(BAND_B * 0.7 + eB * 0.3);
+
+      originalImage.setPixelAt(x, y, Image.rgbaToColor(blendR, blendG, blendB, 255));
+    }
+  }
+
+  // 2) Resize watermark PROPORTIONALLY to fit inside the band
+  const wmAspect = watermarkImage.width / watermarkImage.height;
+  // Watermark should be 85% of band height, and width follows aspect ratio
+  const targetWmHeight = Math.round(bandHeight * 0.7);
+  const targetWmWidth = Math.round(targetWmHeight * wmAspect);
+
+  // Cap width at 40% of image width to avoid being too wide
+  const maxWmWidth = Math.round(imgWidth * 0.4);
+  let finalWidth = Math.min(targetWmWidth, maxWmWidth);
+  let finalHeight = Math.round(finalWidth / wmAspect);
+
+  // Ensure it fits within band
+  if (finalHeight > bandHeight * 0.85) {
+    finalHeight = Math.round(bandHeight * 0.85);
+    finalWidth = Math.round(finalHeight * wmAspect);
+  }
+
+  const resizedWm = watermarkImage.resize(finalWidth, finalHeight);
+
+  // 3) Apply slight transparency to watermark (90% opacity) and tint white for contrast
+  for (let x = 1; x <= resizedWm.width; x++) {
+    for (let y = 1; y <= resizedWm.height; y++) {
+      const pixel = resizedWm.getPixelAt(x, y);
+      const a = pixel & 0xFF;
+      if (a < 10) continue; // skip fully transparent pixels
+      const r = (pixel >> 24) & 0xFF;
+      const g = (pixel >> 16) & 0xFF;
+      const b = (pixel >> 8) & 0xFF;
+      // Keep original colors but with 90% opacity
+      resizedWm.setPixelAt(x, y, Image.rgbaToColor(r, g, b, Math.round(a * 0.9)));
+    }
+  }
+
+  // 4) Center watermark on the band
+  const wmX = Math.round((imgWidth - finalWidth) / 2);
+  const wmY = bandY + Math.round((bandHeight - finalHeight) / 2);
+
+  originalImage.composite(resizedWm, wmX, wmY);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -30,43 +98,22 @@ serve(async (req) => {
     if (!imgRes.ok) throw new Error(`Failed to download image: ${imgRes.status}`);
     const imgBuffer = new Uint8Array(await imgRes.arrayBuffer());
 
-    // 2) Download watermark bar
+    // 2) Download watermark
     const watermarkUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${WATERMARK_PATH}`;
     console.log("Downloading watermark:", watermarkUrl);
     const wmRes = await fetch(watermarkUrl, { signal: AbortSignal.timeout(10000) });
     if (!wmRes.ok) throw new Error(`Failed to download watermark: ${wmRes.status}`);
     const wmBuffer = new Uint8Array(await wmRes.arrayBuffer());
 
-    // 3) Decode images
+    // 3) Decode & apply watermark
     const originalImage = await decode(imgBuffer) as Image;
     const watermarkImage = await decode(wmBuffer) as Image;
+    applyWatermark(originalImage, watermarkImage);
 
-    const imgWidth = originalImage.width;
-    const imgHeight = originalImage.height;
-
-    // 4) Resize watermark to fit image width, height = 12% of image
-    const barHeight = Math.round(imgHeight * 0.12);
-    const resizedWatermark = watermarkImage.resize(imgWidth, barHeight);
-
-    // 5) Apply semi-transparency to watermark (75% opacity)
-    for (let x = 1; x <= resizedWatermark.width; x++) {
-      for (let y = 1; y <= resizedWatermark.height; y++) {
-        const pixel = resizedWatermark.getPixelAt(x, y);
-        const r = (pixel >> 24) & 0xFF;
-        const g = (pixel >> 16) & 0xFF;
-        const b = (pixel >> 8) & 0xFF;
-        resizedWatermark.setPixelAt(x, y, Image.rgbaToColor(r, g, b, 191));
-      }
-    }
-
-    // 6) Composite watermark at bottom of original image
-    originalImage.composite(resizedWatermark, 0, imgHeight - barHeight);
-
-    // 7) Encode to JPEG
+    // 4) Encode to JPEG
     const resultBuffer = await originalImage.encodeJPEG(90);
 
-    // 8) Upload processed image to storage
-    // Extract path from the original URL to create a processed path
+    // 5) Upload processed image
     const urlObj = new URL(foto_url);
     const storagePath = urlObj.pathname.replace(`/storage/v1/object/public/${BUCKET}/`, "");
     const processedPath = `procesada/${storagePath.replace(/^(taller\/|[^/]+\/)/, "")}`;
@@ -87,7 +134,7 @@ serve(async (req) => {
     const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(processedPath);
     const processedUrl = urlData.publicUrl;
 
-    // 9) Insert processed foto record in fotos_solicitud
+    // 6) Insert processed foto record
     if (solicitud_id) {
       await supabase.from("fotos_solicitud").insert({
         solicitud_id,

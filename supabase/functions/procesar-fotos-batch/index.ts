@@ -11,6 +11,67 @@ const corsHeaders = {
 const WATERMARK_PATH = "_assets/watermark-bar.png";
 const BUCKET = "solicitud-fotos";
 
+const BAND_R = 28, BAND_G = 58, BAND_B = 46; // #1C3A2E
+
+function applyWatermark(originalImage: Image, watermarkImage: Image): void {
+  const imgWidth = originalImage.width;
+  const imgHeight = originalImage.height;
+
+  const bandHeight = Math.round(imgHeight * 0.08);
+  const bandY = imgHeight - bandHeight;
+
+  // 1) Semi-transparent forest-green band
+  for (let x = 1; x <= imgWidth; x++) {
+    for (let y = bandY + 1; y <= imgHeight; y++) {
+      const existingPixel = originalImage.getPixelAt(x, y);
+      const eR = (existingPixel >> 24) & 0xFF;
+      const eG = (existingPixel >> 16) & 0xFF;
+      const eB = (existingPixel >> 8) & 0xFF;
+
+      const blendR = Math.round(BAND_R * 0.7 + eR * 0.3);
+      const blendG = Math.round(BAND_G * 0.7 + eG * 0.3);
+      const blendB = Math.round(BAND_B * 0.7 + eB * 0.3);
+
+      originalImage.setPixelAt(x, y, Image.rgbaToColor(blendR, blendG, blendB, 255));
+    }
+  }
+
+  // 2) Proportional watermark resize
+  const wmAspect = watermarkImage.width / watermarkImage.height;
+  const targetWmHeight = Math.round(bandHeight * 0.7);
+  const targetWmWidth = Math.round(targetWmHeight * wmAspect);
+
+  const maxWmWidth = Math.round(imgWidth * 0.4);
+  let finalWidth = Math.min(targetWmWidth, maxWmWidth);
+  let finalHeight = Math.round(finalWidth / wmAspect);
+
+  if (finalHeight > bandHeight * 0.85) {
+    finalHeight = Math.round(bandHeight * 0.85);
+    finalWidth = Math.round(finalHeight * wmAspect);
+  }
+
+  const resizedWm = watermarkImage.resize(finalWidth, finalHeight);
+
+  // 3) Slight transparency
+  for (let x = 1; x <= resizedWm.width; x++) {
+    for (let y = 1; y <= resizedWm.height; y++) {
+      const pixel = resizedWm.getPixelAt(x, y);
+      const a = pixel & 0xFF;
+      if (a < 10) continue;
+      const r = (pixel >> 24) & 0xFF;
+      const g = (pixel >> 16) & 0xFF;
+      const b = (pixel >> 8) & 0xFF;
+      resizedWm.setPixelAt(x, y, Image.rgbaToColor(r, g, b, Math.round(a * 0.9)));
+    }
+  }
+
+  // 4) Center on band
+  const wmX = Math.round((imgWidth - finalWidth) / 2);
+  const wmY = bandY + Math.round((bandHeight - finalHeight) / 2);
+
+  originalImage.composite(resizedWm, wmX, wmY);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -36,7 +97,6 @@ serve(async (req) => {
       "foto_cuadro_electrico_url", "foto_panel_solar_url",
     ];
 
-    // Collect all URLs with their solicitud_id
     const allPhotos: { url: string; solicitud_id: string }[] = [];
     for (const insp of inspecciones || []) {
       for (const field of photoFields) {
@@ -45,7 +105,6 @@ serve(async (req) => {
           allPhotos.push({ url, solicitud_id: insp.solicitud_id });
         }
       }
-      // Array fields
       for (const url of (insp as any).fotos_adicionales_urls || []) {
         if (url && typeof url === "string" && url.startsWith("http")) {
           allPhotos.push({ url, solicitud_id: insp.solicitud_id });
@@ -64,9 +123,7 @@ serve(async (req) => {
     for (const insp of inspecciones || []) {
       await supabase.from("fotos_solicitud").delete().eq("solicitud_id", insp.solicitud_id);
     }
-    console.log("Cleared existing fotos_solicitud records");
 
-    // Insert originals
     for (const photo of allPhotos) {
       await supabase.from("fotos_solicitud").insert({
         solicitud_id: photo.solicitud_id,
@@ -96,22 +153,8 @@ serve(async (req) => {
         const originalImage = await decode(imgBuffer) as Image;
         const watermarkImage = await decode(wmBuffer) as Image;
 
-        const imgWidth = originalImage.width;
-        const imgHeight = originalImage.height;
-        const barHeight = Math.round(imgHeight * 0.12);
-        const resizedWatermark = watermarkImage.resize(imgWidth, barHeight);
+        applyWatermark(originalImage, watermarkImage);
 
-        for (let x = 1; x <= resizedWatermark.width; x++) {
-          for (let y = 1; y <= resizedWatermark.height; y++) {
-            const pixel = resizedWatermark.getPixelAt(x, y);
-            const r = (pixel >> 24) & 0xFF;
-            const g = (pixel >> 16) & 0xFF;
-            const b = (pixel >> 8) & 0xFF;
-            resizedWatermark.setPixelAt(x, y, Image.rgbaToColor(r, g, b, 191));
-          }
-        }
-
-        originalImage.composite(resizedWatermark, 0, imgHeight - barHeight);
         const resultBuffer = await originalImage.encodeJPEG(90);
 
         const urlObj = new URL(photo.url);
