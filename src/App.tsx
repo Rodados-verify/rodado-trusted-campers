@@ -6,6 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
+import LandingVendedores from "./pages/LandingVendedores";
+import LandingTalleres from "./pages/LandingTalleres";
 import Login from "./pages/Login";
 import RegistroVendedor from "./pages/RegistroVendedor";
 import RegistroTaller from "./pages/RegistroTaller";
@@ -45,6 +47,8 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/vendedores" element={<LandingVendedores />} />
+            <Route path="/talleres" element={<LandingTalleres />} />
             <Route path="/login" element={<Login />} />
             <Route path="/registro/vendedor" element={<RegistroVendedor />} />
             <Route path="/registro/taller" element={<RegistroTaller />} />
